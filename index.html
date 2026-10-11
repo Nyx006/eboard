@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light">
+    <title>E-Board | Online Student Accommodation Directory</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="portal-selection" class="portal-container">
+        <h1 class="portal-logo">E-BOARD</h1>
+        <p class="portal-subtext">Select your portal to continue</p>
+        <div class="portal-options">
+            <div class="portal-card" onclick="selectRole('landowner')">
+                <div class="icon-placeholder">👔</div>
+                <h3>Landowner</h3>
+                <p>Manage property vacancies and verify listings</p>
+            </div>
+            <div class="portal-card" onclick="selectRole('student')">
+                <div class="icon-placeholder">🎓</div>
+                <h3>Student / Parent</h3>
+                <p>Find housing with the shortest commute to campus</p>
+            </div>
+        </div>
+    </div>
+
+    <div id="auth-screen" class="portal-container" style="display: none;">
+        <h1 class="portal-logo">E-BOARD</h1>
+        <div class="auth-box">
+            <h2 id="auth-title">Sign In</h2>
+            <div id="reg-fields" style="display: none;">
+                <div class="input-row">
+                    <input type="text" id="reg-fn" placeholder="First Name">
+                    <input type="text" id="reg-ln" placeholder="Last Name">
+                </div>
+                <div id="reg-fields-student" style="display:none; margin-top:15px;">
+                    <select id="reg-school"></select>
+                    <input type="text" id="reg-school-other" placeholder="Enter your school" style="display:none; margin-top:15px;">
+                    <select id="reg-year-level" style="margin-top:15px;"></select>
+                </div>
+                <div id="reg-fields-landowner" style="display:none; margin-top:15px;">
+                    <textarea id="reg-about" placeholder="A short line about yourself (optional)"
+                        style="width:100%; padding:16px; border:1px solid #ddd; border-radius:10px; min-height:70px; font-family:inherit; font-size:16px; resize:vertical;"></textarea>
+                </div>
+            </div>
+            <input type="email" placeholder="Email">
+            <input type="password" placeholder="Password">
+            <div id="reg-confirm-pass" style="display: none;">
+                <input type="password" placeholder="Confirm Password">
+            </div>
+            <button id="auth-btn" class="main-auth-btn" onclick="handleAuth()">Sign In</button>
+            <p class="auth-toggle-text"><span id="auth-msg">Need an account?</span> <a href="#" onclick="toggleAuthMode()">Sign Up</a></p>
+            <a href="#" class="back-link" onclick="backToPortal()">← Back to selection</a>
+        </div>
+    </div>
+
+    <div id="main-app" style="display: none;">
+        <header class="main-header">
+            <div class="logo" onclick="goHome()" style="cursor:pointer">E-BOARD</div>
+            <nav class="nav-right">
+                <span class="nav-link" id="nav-messages" onclick="openInbox()" style="cursor:pointer" aria-label="Messages">
+                    <span class="nav-link-icon" aria-hidden="true">📧</span>
+                    <span class="nav-link-text">Messages</span>
+                    <span id="msg-badge" class="badge">1</span>
+                </span>
+                <span class="nav-link" id="nav-myprofile" onclick="openMyProfile()" style="cursor:pointer" aria-label="My Profile">
+                    <span class="nav-link-icon" aria-hidden="true">👤</span>
+                    <span class="nav-link-text">My Profile</span>
+                </span>
+                <div class="header-divider"></div>
+                <div class="user-profile">
+                    <div class="profile-text">
+                        <span class="user-name">Ana Ramos</span>
+                        <span id="display-user-role" class="user-role">Role</span>
+                    </div>
+                    <button class="logout-btn" onclick="logout()">Logout</button>
+                </div>
+            </nav>
+        </header>
+
+        <div id="student-view" style="display: none;">
+            <section class="search-bar">
+                <div class="search-inner">
+                    <input type="text" id="search-input" placeholder="Search by name or location..." oninput="renderAll()">
+                    <select id="school-select" onchange="updateSchool()"></select>
+                </div>
+            </section>
+            <main class="content">
+                <h2 class="section-title">Discover Accommodations</h2>
+                <div id="boarding-house-grid" class="airbnb-grid"></div>
+            </main>
+        </div>
+
+        <div id="details-view" style="display: none;">
+            <div class="details-map-section">
+                <button class="details-back-btn" onclick="closeDetails()">← Back</button>
+                <div class="distance-label">Distance <span id="details-distance-text">0.0</span>km</div>
+                <div id="details-map"></div>
+            </div>
+            
+            <div class="details-info-section">
+                <div class="details-banner">
+                    <div class="status-indicator">Status: <span id="details-status-text">Vacant</span></div>
+                    <div class="commute-info">🏃 <span id="details-commute-text">2</span> mins walking distance</div>
+                </div>
+                
+                <div id="details-card-content"></div>
+
+                <div id="recommendation-section" style="display: none; margin: 20px 0; padding: 20px; background: #FFF4F4; border-radius: 12px; border: 1px solid #FFCACA;">
+                    <h4 style="color: #D32F2F; margin-bottom: 10px;">⚠️ This house is currently Full</h4>
+                    <p style="font-size: 14px; margin-bottom: 15px;">Nearest available options to campus:</p>
+                    <div id="recommendation-list" class="rec-grid"></div>
+                </div>
+
+                <div class="street-view-container" style="margin-top: 40px;">
+                    <h3 style="margin-bottom: 10px; font-size: 22px;">Street Level Photos</h3>
+                    <p style="font-size: 14px; color: #888; margin-bottom: 20px;">👉 Scroll horizontally to see more photos. Click any photo to enlarge.</p>
+                    <div id="details-image-gallery" class="image-gallery"></div>
+                </div>
+
+                <div class="amenities-container" style="margin-top: 40px;">
+                    <h3 style="margin-bottom: 20px; font-size: 22px;">Key Amenities</h3>
+                    <div id="details-amenities-grid" class="amenities-grid"></div>
+                </div>
+
+                <div id="landowner-about-section" style="margin-top: 40px;"></div>
+
+                <div class="reviews-container" style="margin-top: 45px;">
+                    <div class="reviews-head">
+                        <h3 style="font-size: 22px;">Ratings &amp; Reviews</h3>
+                        <div style="display:flex; gap:12px;">
+                            <a id="details-directions-btn" class="directions-btn" href="#"
+                               style="display:inline-block; margin-top:0; padding:15px 30px; font-size:16px;">Directions</a>
+                            <button id="write-review-btn" class="add-btn" onclick="openReviewModal()">Write a Review</button>
+                        </div>
+                    </div>
+                    <div id="rating-summary" class="rating-summary"></div>
+                    <div id="reviews-list"></div>
+                </div>
+                <div class="action-buttons">
+                    <button class="schedule-btn" id="details-schedule-btn" onclick="openScheduleModal()">📅 Schedule Visit</button>
+                    <button class="contact-btn" id="details-contact-btn">💬 Chat with Owner</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="messages-view" style="display: none;">
+            <main class="content">
+                <h2 class="section-title" id="inbox-title">Messages</h2>
+                <div id="inbox-list" class="inbox-container"></div>
+            </main>
+        </div>
+
+        <div id="landowner-view" style="display: none;">
+            <main class="content">
+                <div class="dashboard-header">
+                    <h2>Dashboard Overview</h2>
+                    <button class="add-btn" onclick="openAddListing()">ADD LISTING</button>
+                </div>
+                <div class="stats-row">
+                    <div class="stat-box">Total Listing: <br><span id="stat-total" style="font-size:28px; color:#9B72FF; display:block; margin-top:8px;">0</span></div>
+                    <div class="stat-box">Active Listing: <br><span id="stat-active" style="font-size:28px; color:#9B72FF; display:block; margin-top:8px;">0</span></div>
+                    <div class="stat-box" style="display:flex; flex-direction:column; align-items:center; justify-content:center;">
+                        Account Status: <br><span id="stat-verify" style="font-size:22px; margin-top:8px;">Unverified</span>
+                    </div>
+                </div>
+
+                <div class="dashboard-header" style="margin-bottom:14px;">
+                    <h2 style="font-size:26px;">Current Listings</h2>
+                </div>
+                <div style="overflow-x: auto; background: white; border-radius: 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.05); padding: 20px; margin-bottom: 40px;">
+                    <table class="dashboard-table">
+                        <thead>
+                            <tr>
+                                <th>Property</th>
+                                <th>Location</th>
+                                <th>Price</th>
+                                <th>Availability</th>
+                                <th>Status</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dashboard-body"></tbody>
+                    </table>
+                </div>
+
+                <div id="landowner-verification-section" style="margin: 40px 0;">
+                    <div class="dashboard-header">
+                        <h2 style="font-size:26px;">Verification Documents</h2>
+                    </div>
+                    <p style="color:#666; font-size:14px; margin-bottom:8px; margin-top:-14px;">
+                        Your badge reflects two independent checks: submitting your identity document for
+                        admin review reaches ID Verified, and an administrator visiting the property in
+                        person reaches Site Visited. Having both reaches Fully Verified. You can list
+                        properties before either check is complete, but the listing won't show a
+                        verification badge until at least one is.
+                    </p>
+                    <p style="color:#888; font-size:13px; font-style:italic; margin-bottom:20px;">
+                        🔒 Uploaded documents are deleted once reviewed — approved documents immediately,
+                        rejected documents after a 7-day window in case you need to see why. Only the
+                        decision (not the file) is kept afterward.
+                    </p>
+                    <div id="verification-cards" class="verification-grid"></div>
+                </div>
+            </main>
+        </div>
+
+    </div>
+
+    <div id="chat-overlay" class="chat-window" style="display: none;">
+        <div class="chat-header">
+            <div class="chat-header-identity" id="chat-header-identity">
+                <span id="chat-with-avatar"></span>
+                <div style="min-width:0;">
+                    <div class="name-badge-row">
+                        <div id="chat-with-name">User</div>
+                        <span id="chat-with-badge"></span>
+                    </div>
+                    <div id="chat-with-property" style="font-size:12px; font-weight:normal; opacity:0.85;"></div>
+                    <div id="chat-with-student-meta" style="display:none; font-size:11px; font-weight:normal; opacity:0.85;"></div>
+                </div>
+            </div>
+            <button class="chat-close-btn" onclick="closeChat()" aria-label="Close chat">×</button>
+        </div>
+        <div id="chat-body" class="chat-body"></div>
+        <div class="chat-footer">
+            <input type="text" id="chat-input" placeholder="Type a message...">
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <div id="schedule-modal" class="modal" onclick="closeScheduleModal()">
+        <div class="modal-form-content" onclick="event.stopPropagation()">
+            <span class="close-btn" onclick="closeScheduleModal()">×</span>
+            <h2 style="color:#9B72FF; margin-bottom:15px; font-size: 26px;">Schedule a Visit</h2>
+            <p style="color:#666; font-size:15px; margin-bottom:25px;">Select a preferred date and time. The landowner will be notified of your request.</p>
+            <form id="schedule-form" onsubmit="submitSchedule(event)">
+                <div class="input-row" style="margin-bottom:15px;">
+                    <input type="date" id="sched-date" required style="padding: 15px; background: #f9f9f9; width: 100%; border: 1px solid #ccc; border-radius: 10px; font-family: inherit;">
+                </div>
+                <div class="input-row" style="margin-bottom:25px;">
+                    <input type="time" id="sched-time" required style="padding: 15px; background: #f9f9f9; width: 100%; border: 1px solid #ccc; border-radius: 10px; font-family: inherit;">
+                </div>
+                <button type="submit" class="main-auth-btn">Confirm Booking</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="add-listing-modal" class="modal" onclick="closeAddListing()">
+        <div class="modal-form-content" onclick="event.stopPropagation()">
+            <span class="close-btn" onclick="closeAddListing()">×</span>
+            <h2 style="color:#9B72FF; margin-bottom:25px; font-size: 26px;">Add New Property</h2>
+            <form id="listing-form" onsubmit="saveNewListing(event)">
+                <div style="margin-bottom: 15px;"><input type="text" id="add-name" placeholder="Property Name" required></div>
+                <div class="input-row" style="margin-bottom: 15px;">
+                    <input type="text" id="add-loc" placeholder="Brgy/Location" required>
+                    <input type="number" id="add-price" placeholder="Price per month" required>
+                </div>
+                <div class="input-row" style="margin-bottom: 15px;">
+                    <input type="number" id="add-total" placeholder="Total Capacity" required>
+                    <input type="number" id="add-available" placeholder="Initially Available" required>
+                </div>
+                <h4 style="margin: 20px 0 12px 0; font-size: 15px; color: #444;">Toggle Amenities:</h4>
+                <div class="amenities-toggle-grid">
+                    <label><input type="checkbox" value="🛏️ Bed"> Bed</label>
+                    <label><input type="checkbox" value="📶 WiFi"> WiFi</label>
+                    <label><input type="checkbox" value="💧 Water"> Water</label>
+                    <label><input type="checkbox" value="🍳 Kitchen"> Kitchen</label>
+                    <label><input type="checkbox" value="🚿 Bathroom"> Bathroom</label>
+                    <label><input type="checkbox" value="📷 CCTV"> CCTV</label>
+                    <label><input type="checkbox" value="⚡ Electricity"> Electricity</label>
+                    <label><input type="checkbox" value="❄️ Aircon"> Aircon</label>
+                </div>
+                <h4 style="margin: 20px 0 12px 0; font-size: 15px; color: #444;">Upload Photos (Hold Shift/Ctrl to select multiple):</h4>
+                <div class="input-row" style="margin-bottom: 20px;">
+                    <input type="file" id="add-street-photo" accept="image/*" multiple style="padding: 12px; background: #f9f9f9; width: 100%; border: 1px solid #ccc; border-radius: 10px;">
+                </div>
+                <h4 style="margin: 20px 0 12px 0; font-size: 15px; color: #444;">Mark Location on Map:</h4>
+                <div id="add-map" style="height: 220px; width: 100%; border-radius: 12px; margin-bottom: 12px; border: 1px solid #ccc;"></div>
+                <p id="add-coord-error" style="display:none; color:#b02a37; font-size:13px; margin-bottom:10px;"></p>
+                <p id="add-proximity-warning" style="display:none; color:#9A6B00; font-size:13px; margin-bottom:10px;"></p>
+                <details style="margin-bottom: 20px;">
+                    <summary style="cursor:pointer; font-size:14px; color:#666;">Enter coordinates manually</summary>
+                    <div class="input-row" style="margin-top:12px;">
+                        <input type="number" id="add-manual-lat" placeholder="Latitude (e.g. 13.163772)" step="0.000001" min="13.090" max="13.220">
+                        <input type="number" id="add-manual-lng" placeholder="Longitude (e.g. 123.751261)" step="0.000001" min="123.690" max="123.800">
+                    </div>
+                </details>
+                <input type="hidden" id="add-lat"><input type="hidden" id="add-lng">
+                <button type="submit" id="save-property-btn" class="main-auth-btn">Save Property</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="edit-listing-modal" class="modal" onclick="closeEditListing()">
+        <div class="modal-form-content" onclick="event.stopPropagation()">
+            <span class="close-btn" onclick="closeEditListing()">×</span>
+            <h2 style="color:#9B72FF; margin-bottom:25px; font-size: 26px;">Edit Property</h2>
+            <form id="edit-listing-form" onsubmit="saveEditListing(event)">
+                <div style="margin-bottom: 15px;"><input type="text" id="edit-name" placeholder="Property Name" required></div>
+                <div class="input-row" style="margin-bottom: 15px;">
+                    <input type="text" id="edit-loc" placeholder="Brgy/Location" required>
+                    <input type="number" id="edit-price" placeholder="Price per month" required>
+                </div>
+                <div class="input-row" style="margin-bottom: 15px;">
+                    <input type="number" id="edit-total" placeholder="Total Capacity" required>
+                    <input type="number" id="edit-available" placeholder="Initially Available" required>
+                </div>
+                <h4 style="margin: 20px 0 12px 0; font-size: 15px; color: #444;">Toggle Amenities:</h4>
+                <div class="amenities-toggle-grid" id="edit-amenities-grid">
+                    <label><input type="checkbox" value="🛏️ Bed"> Bed</label>
+                    <label><input type="checkbox" value="📶 WiFi"> WiFi</label>
+                    <label><input type="checkbox" value="💧 Water"> Water</label>
+                    <label><input type="checkbox" value="🍳 Kitchen"> Kitchen</label>
+                    <label><input type="checkbox" value="🚿 Bathroom"> Bathroom</label>
+                    <label><input type="checkbox" value="📷 CCTV"> CCTV</label>
+                    <label><input type="checkbox" value="⚡ Electricity"> Electricity</label>
+                    <label><input type="checkbox" value="❄️ Aircon"> Aircon</label>
+                </div>
+                <h4 style="margin: 20px 0 12px 0; font-size: 15px; color: #444;">Replace Photos (Leave blank to keep current photos):</h4>
+                <div class="input-row" style="margin-bottom: 20px;">
+                    <input type="file" id="edit-street-photo" accept="image/*" multiple style="padding: 12px; background: #f9f9f9; width: 100%; border: 1px solid #ccc; border-radius: 10px;">
+                </div>
+                <h4 style="margin: 20px 0 12px 0; font-size: 15px; color: #444;">Update Location Map:</h4>
+                <div id="edit-map" style="height: 220px; width: 100%; border-radius: 12px; margin-bottom: 12px; border: 1px solid #ccc;"></div>
+                <p id="edit-coord-error" style="display:none; color:#b02a37; font-size:13px; margin-bottom:10px;"></p>
+                <p id="edit-proximity-warning" style="display:none; color:#9A6B00; font-size:13px; margin-bottom:10px;"></p>
+                <details style="margin-bottom: 20px;">
+                    <summary style="cursor:pointer; font-size:14px; color:#666;">Enter coordinates manually</summary>
+                    <div class="input-row" style="margin-top:12px;">
+                        <input type="number" id="edit-manual-lat" placeholder="Latitude (e.g. 13.163772)" step="0.000001" min="13.090" max="13.220">
+                        <input type="number" id="edit-manual-lng" placeholder="Longitude (e.g. 123.751261)" step="0.000001" min="123.690" max="123.800">
+                    </div>
+                </details>
+                <input type="hidden" id="edit-lat"><input type="hidden" id="edit-lng">
+                <button type="submit" id="update-property-btn" class="main-auth-btn">Update Property</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="review-modal" class="modal" onclick="closeReviewModal()">
+        <div class="modal-form-content" style="max-width: 560px;" onclick="event.stopPropagation()">
+            <span class="close-btn" onclick="closeReviewModal()">×</span>
+            <h2 style="color:#9B72FF; margin-bottom:8px; font-size: 26px;">Rate this Property</h2>
+            <p id="review-prop-name" style="color:#666; font-size:15px; margin-bottom:25px;"></p>
+            <form id="review-form" onsubmit="submitReview(event)">
+                <div class="star-picker" id="star-picker">
+                    <span class="star-choice" data-val="1" onclick="setStar(1)">★</span>
+                    <span class="star-choice" data-val="2" onclick="setStar(2)">★</span>
+                    <span class="star-choice" data-val="3" onclick="setStar(3)">★</span>
+                    <span class="star-choice" data-val="4" onclick="setStar(4)">★</span>
+                    <span class="star-choice" data-val="5" onclick="setStar(5)">★</span>
+                </div>
+                <p id="star-label" class="star-label">Tap a star to rate</p>
+                <textarea id="review-comment" rows="5" maxlength="600"
+                    placeholder="Share your experience — cleanliness, water supply, landlord responsiveness, safety at night..."
+                    style="width:100%; padding:16px; border:1px solid #ddd; border-radius:10px; font-family:inherit; font-size:15px; resize:vertical;"></textarea>
+                <p style="font-size:13px; color:#888; margin:12px 0 20px;">
+                    Reviews are checked by an administrator before appearing publicly.
+                </p>
+                <button type="submit" class="main-auth-btn">Submit Review</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="image-view-modal" class="modal" onclick="closeImageModal()">
+        <span class="close-btn" style="top: 25px; right: 40px; font-size: 50px; color: white;">×</span>
+        <img class="image-modal-content" id="expanded-img">
+    </div>
+
+    <div id="landowner-profile-modal" class="modal" onclick="closeLandownerProfileModal()">
+        <div class="modal-form-content" onclick="event.stopPropagation()">
+            <span class="close-btn" onclick="closeLandownerProfileModal()">×</span>
+            <div id="landowner-profile-body"></div>
+        </div>
+    </div>
+
+    <div id="student-profile-modal" class="modal" onclick="closeStudentProfileModal()">
+        <div class="modal-form-content" onclick="event.stopPropagation()">
+            <span class="close-btn" onclick="closeStudentProfileModal()">×</span>
+            <div id="student-profile-body"></div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="routing.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

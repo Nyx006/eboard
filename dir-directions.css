@@ -1,0 +1,132 @@
+/* ============================================================
+   E-BOARD DIRECTIONS — rules layered on top of style.css.
+   Two-column layout (map + panel), the player controls, the
+   segment list, and the walking avatar. Panel typography/buttons
+   reuse style.css's existing rules wherever they already fit.
+   ============================================================ */
+
+html, body { height: 100%; }
+
+.directions-layout { display: flex; height: 100vh; }
+
+.directions-map { flex: 1; position: relative; }
+#directions-map-el { height: 100%; width: 100%; }
+
+.directions-panel {
+    width: 420px;
+    flex-shrink: 0;
+    height: 100vh;
+    overflow-y: auto;
+    background: white;
+    padding: 30px 26px;
+    box-shadow: -6px 0 20px rgba(0,0,0,0.06);
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+}
+
+.directions-panel h1 { font-size: 24px; color: #222; }
+.directions-panel .subtitle { color: #666; font-size: 14px; margin-top: 4px; }
+
+.back-to-directory { align-self: flex-start; color: #9B72FF; font-size: 14px; font-weight: 600; text-decoration: none; }
+.back-to-directory:hover { text-decoration: underline; }
+
+#route-warning {
+    display: none;
+    background: #FFF4D6;
+    color: #9A6B00;
+    border: 1px solid #f3d98a;
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.route-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.route-stat-box { background: #F4F0FF; border-radius: 12px; padding: 14px 16px; }
+.route-stat-box .label { font-size: 12px; color: #6b4fc4; text-transform: uppercase; letter-spacing: 0.4px; font-weight: 700; }
+.route-stat-box .value { font-size: 20px; color: #222; font-weight: 700; margin-top: 4px; }
+.compute-note { font-size: 12px; color: #888; }
+
+.origin-field label { font-size: 13px; color: #444; font-weight: 600; display: block; margin-bottom: 8px; }
+
+.player-controls { border-top: 1px solid #eee; border-bottom: 1px solid #eee; padding: 18px 0; display: flex; flex-direction: column; gap: 14px; }
+.player-row { display: flex; align-items: center; gap: 14px; }
+.play-btn { background: #9B72FF; color: white; border: none; width: 46px; height: 46px; border-radius: 50%; font-size: 18px; cursor: pointer; flex-shrink: 0; transition: 0.2s; display: flex; align-items: center; justify-content: center; }
+.play-btn:hover { background: #8655ff; }
+.scrubber { flex: 1; accent-color: #9B72FF; }
+
+.speed-group { display: flex; gap: 8px; }
+.speed-btn { flex: 1; background: #F4F0FF; border: 1px solid #E0D5FF; color: #6b4fc4; padding: 8px 0; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; transition: 0.2s; }
+.speed-btn:hover { background: #E0D5FF; }
+.speed-btn.active { background: #9B72FF; border-color: #9B72FF; color: white; }
+
+.progress-text { font-size: 13px; color: #555; display: flex; justify-content: space-between; }
+
+.segment-list { list-style: none; counter-reset: seg; display: flex; flex-direction: column; gap: 10px; }
+.segment-item { counter-increment: seg; background: #FAFAFA; border: 1px solid #eee; border-radius: 10px; padding: 12px 14px 12px 44px; position: relative; font-size: 14px; color: #333; }
+.segment-item::before {
+    content: counter(seg);
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    width: 22px; height: 22px; border-radius: 50%;
+    background: #9B72FF; color: white; font-size: 12px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+}
+.segment-item .seg-dist { color: #888; font-size: 12px; margin-left: 6px; }
+
+.avatar-marker { font-size: 22px; line-height: 1; transform-origin: center; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.4)); }
+
+/* ---------- Street View ---------- */
+
+.view-toggle {
+    position: absolute; top: 12px; left: 12px; z-index: 1000;
+    display: flex; gap: 6px;
+    background: white; padding: 6px; border-radius: 10px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+}
+.view-toggle-btn {
+    background: transparent; border: none; color: #6b4fc4;
+    padding: 8px 16px; border-radius: 7px; font-weight: 700; font-size: 13px;
+    cursor: pointer; font-family: inherit; transition: 0.2s;
+}
+.view-toggle-btn:hover { background: #F4F0FF; }
+.view-toggle-btn.active { background: #9B72FF; color: white; }
+
+#street-view-pane { position: absolute; inset: 0; background: #111; }
+#street-view-el { height: 100%; width: 100%; }
+
+#sv-unavailable-msg {
+    display: none;
+    position: absolute; inset: 0;
+    align-items: center; justify-content: center;
+    text-align: center;
+    padding: 40px;
+    color: #eee;
+    background: rgba(0,0,0,0.75);
+    font-size: 15px;
+    line-height: 1.6;
+}
+
+/* ===== MOBILE (<=700px) =====
+   .directions-map (flex:1) and .directions-panel (flex-shrink:0,
+   width:420px) were a desktop-only side-by-side assumption: on a narrow
+   viewport the panel's fixed 420px doesn't shrink, so the map gets
+   squeezed toward zero width. Everything anchored to .directions-map
+   (the view-toggle, #street-view-pane's inset:0) then collapses into
+   the same on-screen sliver the panel's content also occupies -- that's
+   the actual mechanism behind both the toggle overlapping the property
+   title and Street View rendering on top of the panel. Stacking the two
+   regions vertically with the map given a real, bounded height fixes
+   both at once: the toggle and the Street View pane stay confined to
+   that bounded map box, nowhere near the panel below it. */
+@media (max-width: 700px) {
+    .directions-layout { flex-direction: column; height: auto; min-height: 100vh; }
+
+    .directions-map { flex: none; width: 100%; height: 45vh; min-height: 260px; }
+
+    .directions-panel {
+        width: 100%;
+        height: auto;
+        box-shadow: 0 -6px 20px rgba(0,0,0,0.06);
+    }
+}

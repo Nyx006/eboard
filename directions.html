@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light">
+    <title>E-Board Directions | Route to Campus</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="dir-directions.css">
+</head>
+<body>
+
+    <div class="directions-layout">
+        <div class="directions-map">
+            <div id="directions-map-el"></div>
+
+            <div class="view-toggle">
+                <button id="view-toggle-map" class="view-toggle-btn active" onclick="setViewMode('map')">Map</button>
+                <button id="view-toggle-sv" class="view-toggle-btn" onclick="setViewMode('streetview')">Street View</button>
+            </div>
+
+            <div id="street-view-pane" style="display:none;">
+                <div id="street-view-el"></div>
+                <div id="sv-unavailable-msg">📷 No street imagery available here.</div>
+            </div>
+        </div>
+
+        <div class="directions-panel">
+            <a id="back-to-directory" class="back-to-directory" href="index.html">← Back to directory</a>
+
+            <div>
+                <h1 id="property-name">Loading…</h1>
+                <p class="subtitle" id="route-subtitle">Computing route…</p>
+            </div>
+
+            <p id="route-warning">
+                ⚠ Road network unavailable — showing a straight-line estimate
+                (Haversine × 1.15). This is a fallback, not a real route.
+            </p>
+
+            <div class="route-stats">
+                <div class="route-stat-box">
+                    <div class="label">Road distance</div>
+                    <div class="value" id="stat-distance">–</div>
+                </div>
+                <div class="route-stat-box">
+                    <div class="label">Est. walk time</div>
+                    <div class="value" id="stat-walktime">–</div>
+                </div>
+            </div>
+            <p class="compute-note" id="compute-note">Computed in – ms over – nodes.</p>
+
+            <div class="origin-field">
+                <label for="campus-select">Recompute from a different campus</label>
+                <select id="campus-select"></select>
+            </div>
+
+            <div class="player-controls">
+                <div class="player-row">
+                    <button class="play-btn" id="play-btn" onclick="toggleAnimation()">▶</button>
+                    <input type="range" class="scrubber" id="scrubber" min="0" max="1000" value="0">
+                </div>
+                <div class="speed-group">
+                    <button class="speed-btn" data-speed="1" onclick="setSpeed(1)">1x</button>
+                    <button class="speed-btn" data-speed="2" onclick="setSpeed(2)">2x</button>
+                    <button class="speed-btn" data-speed="4" onclick="setSpeed(4)">4x</button>
+                    <button class="speed-btn" data-speed="8" onclick="setSpeed(8)">8x</button>
+                </div>
+                <div class="progress-text">
+                    <span>Travelled: <b id="stat-travelled">0 m</b></span>
+                    <span>Remaining: <b id="stat-remaining">0 m</b></span>
+                </div>
+            </div>
+
+            <div>
+                <h4 style="margin-bottom:10px; font-size:15px; color:#444;">Route segments</h4>
+                <ol class="segment-list" id="segment-list"></ol>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="routing.js"></script>
+    <!-- Local, git-ignored -- see config.example.js. Must load before
+         directions.js, which reads window.GOOGLE_MAPS_API_KEY from it. -->
+    <script src="config.js"></script>
+    <script src="directions.js"></script>
+</body>
+</html>

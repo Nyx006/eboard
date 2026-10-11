@@ -1,0 +1,488 @@
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Poppins', sans-serif; }
+
+/* The <meta name="color-scheme" content="light"> tags on each page cover
+   Chrome/Android's forced-dark heuristic; this covers browsers (Brave,
+   Chrome behind #enable-force-dark) that apply their own inversion on
+   top of or instead of respecting that meta tag. Paired with explicit
+   background-color/color below so there's nothing left unstyled for a
+   forced-dark pass to "helpfully" repaint. */
+:root { color-scheme: only light; }
+
+body { background-color: #F8F9FA; color: #333; overflow-x: hidden; }
+
+.airbnb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 35px; padding-top: 15px; }
+.airbnb-card { background: white; border-radius: 18px; overflow: hidden; cursor: pointer; transition: transform 0.25s ease, box-shadow 0.25s ease; border: 1px solid #eaeaea; }
+.airbnb-card:hover { transform: translateY(-6px); box-shadow: 0 15px 30px rgba(0,0,0,0.08); }
+.card-img-box { width: 100%; height: 240px; background: #EBEBEB; position: relative; background-size: cover; background-position: center; }
+.card-info { padding: 22px; }
+.card-title { font-weight: 600; font-size: 20px; display: flex; justify-content: space-between; align-items: center; color: #222; }
+/* Verification badge. UNVERIFIED and DOCUMENTS_SUBMITTED both render no
+   badge at all (tierBadgeHtml() returns '' for both -- see its comment
+   in script.js) -- neither is a verification outcome a student should
+   read as reassurance, and DOCUMENTS_SUBMITTED ("ID Submitted") is a
+   pending state kept visible only to the landowner and admin, never the
+   directory. The other three each get their own color, one per
+   combination of the two independent checks (ID review, site visit --
+   see computeVerificationTier()'s comment in script.js): ID_VERIFIED
+   (amber) and SITE_VISITED (teal) are each ONE check; FULLY_VERIFIED
+   (violet) is both, and is visually distinct from either alone rather
+   than just a brighter version of one of them. */
+/* inline-flex + vertical-align:middle keeps the badge's own padded box
+   centered against surrounding text of a different size/line-height
+   (its default inline baseline otherwise sits low against short avatar-
+   row text) -- and white-space:nowrap stops its own two words from
+   wrapping mid-badge in a tight row; the *row* wraps the whole badge
+   onto a new line instead (see .name-badge-row below), never the
+   badge's own text. */
+.tier-badge { display: inline-flex; align-items: center; vertical-align: middle; white-space: nowrap; font-size: 11px; padding: 4px 10px; border-radius: 6px; text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px; }
+.tier-id-verified { background: #FFF4D6; color: #9A6B00; border: 1px solid #E8CE8A; }
+/* Darkened from the old #008489 (site-verified's original color) to
+   #006D72 -- white text on #008489 measures ~4.50:1, right at WCAG AA's
+   4.5:1 floor for small text with no margin for rendering variance;
+   #006D72 measures ~6.12:1. */
+.tier-site-visited { background: #006D72; color: white; }
+/* New: both checks. Light-bg/dark-text (like .tier-id-verified and
+   .tier-student-verified below) rather than a solid violet -- this
+   app's solid brand purple (#9B72FF) only manages ~3.36:1 against white
+   text, well under AA for this badge's small size. #5B21B6 on #F0EBFF
+   measures ~7.7:1. */
+.tier-fully-verified { background: #F0EBFF; color: #5B21B6; border: 1px solid #D4C5FA; }
+/* "Student Verified" specifically -- kept distinct from .tier-id-verified
+   (the landowner's amber ID-verified badge) so changing one doesn't
+   change the other. #166534 on #E3F6E8 (same light green .pill-ok
+   already uses for "positive" states elsewhere) is ~6.3:1 contrast --
+   comfortably clears WCAG AA's 4.5:1 for small text, unlike this app's
+   solid #28a745/white "approve" green, which only manages ~3.1:1 and
+   would fail at this badge's small size. */
+.tier-student-verified { background: #E3F6E8; color: #166534; border: 1px solid #A9DDB8; }
+/* Colored-circle initials avatar -- stands in for a profile photo (see
+   initialsAvatarHtml() in script.js/admin.js). Sizing is inline per call
+   (width/height/font-size), only the shape/centering lives here. */
+.initials-avatar { border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 700; flex-shrink: 0; vertical-align: middle; }
+/* Clickable owner-name row on a directory card, opening the landowner
+   profile modal -- see openLandownerProfile() in script.js. Card space is
+   tight, so the row itself stays visually compact, but min-height (with
+   inline-flex actually enforcing it, same reasoning as #nav-messages'
+   44px tap target below) guarantees a thumb-sized tap area regardless of
+   how small the avatar/text inside it are. */
+.card-owner { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; width: 100%;
+    font-size: 14px; font-weight: 600; color: #444; cursor: pointer; margin: 4px 0; }
+.card-owner:hover { color: #9B72FF; }
+.card-owner:hover .initials-avatar { box-shadow: 0 0 0 2px #9B72FF33; }
+
+/* "About the landowner" section on the listing details page -- the main
+   entry point to the landowner profile (see openLandownerProfile()),
+   deliberately a full bordered block near the top of the page rather
+   than a small text line, since that's the whole point of this section. */
+.landowner-about { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+    background: #F8F9FA; border: 1px solid #eee; border-radius: 16px; padding: 18px 22px; margin: 18px 0 28px; }
+.landowner-about-identity { display: flex; align-items: center; gap: 14px; cursor: pointer; min-height: 44px; }
+.landowner-about-label { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 3px; }
+.landowner-about-name { font-size: 17px; font-weight: 700; color: #222; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.landowner-about-btn { background: #9B72FF; color: white; border: none; padding: 12px 22px; border-radius: 10px;
+    font-weight: 600; font-size: 14px; cursor: pointer; font-family: inherit; white-space: nowrap; min-height: 44px; transition: 0.2s; }
+.landowner-about-btn:hover { background: #8655ff; }
+
+/* Student-profile entry point on the landowner's inbox card / chat header
+   -- see openStudentProfile(). Same 44px-tap-target reasoning as
+   .card-owner above, mirrored so both directions of profile discovery
+   are equally prominent. */
+.student-chip { display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; margin: 2px 0; min-width: 0; }
+.student-chip:hover .student-chip-name { color: #9B72FF; }
+.student-chip-name { font-size: 15px; font-weight: 700; color: #222; }
+.student-chip-meta { font-size: 12px; color: #999; margin-top: 2px; }
+
+/* Shared by every place a "Student Verified" (or any tier) badge sits
+   next to a name -- inbox chip, chat header, profile modal -- so it's
+   aligned the same way in all three: same line, vertically centered,
+   consistent gap. flex-wrap lets the badge (never its own text, see
+   .tier-badge's white-space:nowrap above) drop to its own line under
+   the name when the row is too narrow, instead of overlapping or
+   squeezing into the name's line. */
+.name-badge-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; row-gap: 4px; }
+
+.chat-header-identity { display: flex; align-items: center; gap: 12px; min-height: 44px; min-width: 0; flex: 1; }
+.chat-header-identity.is-clickable { cursor: pointer; }
+.chat-header-identity.is-clickable:hover #chat-with-name { text-decoration: underline; }
+
+.card-location { color: #666; font-size: 15px; margin: 8px 0; }
+.card-price { font-size: 18px; margin-top: 15px; color: #555; }
+.card-price b { color: #222; font-size: 22px; }
+.directions-btn { display: block; text-align: center; margin-top: 14px; background: #9B72FF; color: white; text-decoration: none; padding: 11px; border-radius: 8px; font-weight: 600; font-size: 14px; transition: 0.2s; }
+.directions-btn:hover { background: #8655ff; }
+.dist-tag { position: absolute; top: 15px; left: 15px; background: rgba(255,255,255,0.95); padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.1); color: #333; z-index: 5; }
+
+.full-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.65); color: white; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; backdrop-filter: blur(2px); z-index: 10; }
+
+.portal-container { height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #fff; text-align: center; }
+.portal-logo { color: #9B72FF; font-size: 64px; font-weight: 800; margin-bottom: 10px; letter-spacing: -1px; }
+.portal-subtext { color: #777; margin-bottom: 50px; font-size: 20px; }
+.portal-options { display: flex; gap: 40px; }
+.portal-card { background: #F4F0FF; width: 340px; padding: 50px 30px; border-radius: 24px; text-align: center; cursor: pointer; transition: 0.3s; border: 1px solid #E0D5FF; }
+.portal-card:hover { transform: translateY(-8px); background: #E0D5FF; box-shadow: 0 15px 30px rgba(155, 114, 255, 0.15); }
+.icon-placeholder { font-size: 60px; margin-bottom: 25px; }
+.portal-card h3 { font-size: 24px; margin-bottom: 12px; color: #333; }
+.portal-card p { font-size: 16px; color: #666; line-height: 1.5; }
+
+.auth-box { background: white; width: 480px; padding: 50px; border-radius: 24px; display: flex; flex-direction: column; gap: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.08); border: 1px solid #eee; }
+.input-row { display: flex; gap: 15px; }
+input, select { padding: 16px; border: 1px solid #ddd; border-radius: 10px; outline: none; width: 100%; font-size: 16px; transition: 0.2s; }
+input:focus, select:focus { border-color: #9B72FF; box-shadow: 0 0 0 3px rgba(155, 114, 255, 0.1); }
+
+/* Custom chevron replacing the browser-default select arrow, which
+   looked out of place next to styled text inputs (#school-select sits
+   directly under #search-input; #campus-select is the only other
+   select in the app). One rule for the bare `select` type covers both
+   -- there's nothing else to exclude. border-radius/font-size/height
+   are inherited from the `input, select` rule above (and, for
+   #school-select, from .search-inner input, .search-inner select
+   further down) so this only adds arrow-related properties, never
+   overriding those shared measurements. */
+select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23666666' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 20px center;
+    background-size: 14px;
+    padding-right: 50px; /* room for the chevron so text never runs under it */
+}
+.main-auth-btn { background: #9B72FF; color: white; border: none; padding: 18px; border-radius: 10px; font-weight: bold; cursor: pointer; font-size: 18px; width: 100%; transition: 0.2s; box-shadow: 0 4px 15px rgba(155, 114, 255, 0.3); }
+.main-auth-btn:hover { background: #8655ff; transform: translateY(-2px); box-shadow: 0 6px 20px rgba(155, 114, 255, 0.4); }
+.main-auth-btn:disabled { background: #ccc; cursor: not-allowed; box-shadow: none; transform: none; }
+
+.main-header { background: #9B72FF; padding: 15px 2%; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 1000; box-shadow: 0 4px 15px rgba(0,0,0,0.1); color: white; }
+.logo { color: white; font-size: 30px; font-weight: 800; letter-spacing: 1px; }
+.nav-right { display: flex; align-items: center; font-size: 16px; gap: 24px; }
+.nav-link { color: white; font-weight: 500; transition: opacity 0.2s; }
+.nav-link:hover { opacity: 0.8; }
+/* Shared by both icon-link nav items (Messages, My Profile) -- text on
+   desktop, icon-only on mobile (see the media query below). */
+.nav-link-icon { display: none; font-size: 20px; line-height: 1; }
+.nav-link-text { display: inline; }
+/* No horizontal margin -- .nav-right's gap (above) now supplies spacing
+   uniformly on both sides, so an additional margin here would double up. */
+.header-divider { width: 1px; height: 35px; background: rgba(255,255,255,0.3); }
+.user-profile { display: flex; align-items: center; gap: 15px; }
+.profile-text { display: flex; flex-direction: column; text-align: right; }
+.user-name { font-weight: 600; font-size: 15px; color: white; line-height: 1.1; }
+.user-role { font-size: 11px; color: rgba(255,255,255,0.8); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500; margin-top: 2px;}
+.badge { background: #dc3545; color: white; padding: 3px 9px; border-radius: 50%; font-size: 12px; margin-left: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+.logout-btn { background: transparent; border: 1px solid white; color: white; padding: 8px 18px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; transition: 0.2s; }
+.logout-btn:hover { background: white; color: #9B72FF; }
+
+.search-bar { background: #8A5CFF; padding: 35px 5%; box-shadow: inset 0 -5px 15px rgba(0,0,0,0.05); }
+.search-inner { display: flex; flex-direction: column; gap: 15px; max-width: 1200px; margin: 0 auto; }
+/* line-height is set explicitly (not "normal") so input and select
+   compute the exact same box height from identical padding -- a native
+   <select>'s default line metrics don't quite match a plain <input>'s
+   even with matching font-size/padding, which otherwise left the two
+   fields visibly 2px off from each other. */
+.search-inner input, .search-inner select { padding: 18px 20px; border-radius: 12px; border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.1); font-size: 16px; line-height: 20px; }
+/* .search-inner select's own padding shorthand (above) outranks the
+   shared `select { padding-right: 50px }` rule by specificity
+   regardless of source order, so the chevron clearance needs restating
+   here at matching specificity. */
+.search-inner select { padding-right: 50px; }
+
+.content { padding: 50px 5%; max-width: 1200px; margin: 0 auto; }
+.section-title { margin-bottom: 30px; color: #222; font-size: 32px; font-weight: 700; letter-spacing: -0.5px; }
+
+#details-view { position: fixed; top: 70px; left: 0; width: 100%; height: calc(100vh - 70px); background: #F8F9FA; z-index: 900; overflow-y: auto; }
+.details-map-section { height: 45vh; width: 100%; position: relative; z-index: 1; }
+#details-map { height: 100%; width: 100%; }
+.details-back-btn { position: absolute; top: 25px; left: 5%; z-index: 1000; background: white; border: none; padding: 12px 30px; border-radius: 25px; cursor: pointer; font-weight: bold; color: #9B72FF; box-shadow: 0 4px 15px rgba(0,0,0,0.15); font-size: 16px; transition: transform 0.2s; }
+.details-back-btn:hover { transform: scale(1.05); }
+.distance-label { position: absolute; top: 25px; right: 5%; background: #9B72FF; color: white; padding: 12px 25px; border-radius: 15px; font-size: 15px; font-weight: bold; z-index: 1000; box-shadow: 0 4px 15px rgba(0,0,0,0.15); }
+.details-info-section { width: 100%; background: white; border-radius: 40px 40px 0 0; margin-top: -40px; position: relative; z-index: 2; padding: 50px 5%; min-height: 60vh; max-width: 1200px; margin-left: auto; margin-right: auto; box-shadow: 0 -10px 30px rgba(0,0,0,0.08); }
+.details-banner { background: #F4F0FF; color: #9B72FF; padding: 20px 35px; border-radius: 15px; display: flex; justify-content: space-between; margin-bottom: 40px; align-items: center; font-weight: 600; font-size: 18px; border: 1px solid #E0D5FF; }
+
+.image-gallery { display: flex; gap: 20px; overflow-x: auto; padding-bottom: 20px; scroll-snap-type: x mandatory; }
+.image-gallery::-webkit-scrollbar { height: 10px; }
+.image-gallery::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
+.image-gallery::-webkit-scrollbar-thumb { background: #ccc; border-radius: 10px; }
+.image-gallery::-webkit-scrollbar-thumb:hover { background: #9B72FF; }
+.gallery-img { width: 100%; max-width: 500px; height: 350px; object-fit: cover; border-radius: 18px; scroll-snap-align: center; flex-shrink: 0; background: #EBEBEB; border: 1px solid #ddd; transition: transform 0.2s; cursor: zoom-in; }
+.gallery-img:hover { transform: scale(1.02); box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
+
+.amenities-grid { display: flex; flex-wrap: wrap; gap: 15px; }
+.amenity-item { background: #F8F9FA; padding: 15px 25px; border-radius: 12px; font-size: 16px; font-weight: 600; color: #444; border: 1px solid #eee; }
+.action-buttons { display: flex; gap: 25px; margin-top: 50px; }
+.contact-btn { background: #9B72FF; color: white; padding: 20px; border: none; border-radius: 15px; font-weight: bold; cursor: pointer; flex: 2; font-size: 18px; box-shadow: 0 5px 15px rgba(155, 114, 255, 0.3); transition: 0.2s; }
+.contact-btn:hover { background: #8655ff; transform: translateY(-2px); }
+.schedule-btn { background: #EBEBEB; color: #333; padding: 20px; border: none; border-radius: 15px; font-weight: bold; cursor: pointer; flex: 1; font-size: 18px; transition: 0.2s; }
+.schedule-btn:hover { background: #ddd; }
+
+.dashboard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
+.dashboard-header h2 { font-size: 32px; font-weight: 700; color: #222; }
+.add-btn { background: #9B72FF; color: white; border: none; padding: 15px 30px; border-radius: 10px; font-weight: bold; cursor: pointer; font-size: 16px; box-shadow: 0 4px 15px rgba(155, 114, 255, 0.3); transition: 0.2s; }
+.add-btn:hover { background: #8655ff; transform: translateY(-2px); }
+.stats-row { display: flex; gap: 30px; margin-bottom: 40px; }
+.stat-box { background: white; padding: 30px; border-radius: 20px; flex: 1; text-align: center; box-shadow: 0 5px 20px rgba(0,0,0,0.05); font-weight: 600; font-size: 18px; border: 1px solid #eee; }
+.dashboard-table { width: 100%; border-collapse: collapse; min-width: 900px; font-size: 16px; }
+.dashboard-table th { background: #F4F0FF; color: #9B72FF; padding: 20px; text-align: left; font-size: 15px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid #E0D5FF; }
+.dashboard-table td { padding: 20px; border-bottom: 1px solid #eee; color: #444; }
+
+.table-action-btns { display: flex; gap: 15px; }
+.edit-btn { background: none; border: none; color: #007bff; font-weight: bold; cursor: pointer; font-size: 15px; }
+.edit-btn:hover { text-decoration: underline; }
+.delete-btn { background: none; border: none; color: #dc3545; font-weight: bold; cursor: pointer; font-size: 15px; }
+.delete-btn:hover { text-decoration: underline; }
+
+.modal { display: none; position: fixed; z-index: 3000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(5px); }
+.modal-form-content {
+    background: white; margin: 4% auto; padding: 50px; border-radius: 24px;
+    width: 100%; max-width: 650px; position: relative; box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+    max-height: 90vh; overflow-y: auto; overflow-wrap: break-word;
+}
+.modal-form-content::-webkit-scrollbar { width: 8px; }
+.modal-form-content::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
+.modal-form-content::-webkit-scrollbar-thumb { background: #ccc; border-radius: 10px; }
+.modal-form-content::-webkit-scrollbar-thumb:hover { background: #9B72FF; }
+
+.close-btn { position: absolute; right: 30px; top: 20px; font-size: 40px; cursor: pointer; color: #999; transition: 0.2s; }
+.close-btn:hover { color: #333; }
+.amenities-toggle-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; padding: 20px; background: #F8F9FA; border-radius: 12px; border: 1px solid #eee; font-size: 14px; }
+
+#image-view-modal { background-color: rgba(0,0,0,0.95); display: none; position: fixed; z-index: 4000; left: 0; top: 0; width: 100%; height: 100%; cursor: zoom-out; }
+.image-modal-content { margin: auto; display: block; max-width: 90%; max-height: 85vh; margin-top: 5vh; border-radius: 12px; object-fit: contain; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+
+.chat-window { position: fixed; bottom: 0; right: 5%; width: 380px; height: 550px; background: white; border-radius: 20px 20px 0 0; box-shadow: 0 -10px 40px rgba(0,0,0,0.15); z-index: 2000; display: flex; flex-direction: column; overflow: hidden; border: 1px solid #eee; }
+.chat-header { background: #9B72FF; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 18px; }
+.chat-close-btn { background: transparent; border: none; color: white; font-size: 26px; line-height: 1; cursor: pointer; min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; transition: 0.2s; }
+.chat-close-btn:hover { background: rgba(255,255,255,0.15); }
+/* justify-content:flex-end packs messages against the bottom of the
+   scroll area (like any real chat UI) instead of the top, so a short
+   conversation doesn't leave a large empty gap above the input --
+   overflow-y:auto still scrolls normally once there's enough content
+   to fill the space. */
+.chat-body { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; justify-content: flex-end; gap: 12px; background: #F8F9FA; }
+.msg-bubble { padding: 12px 18px; border-radius: 18px; font-size: 15px; max-width: 85%; line-height: 1.4; }
+.msg-me { background: #9B72FF; color: white; align-self: flex-end; border-bottom-right-radius: 4px; box-shadow: 0 2px 5px rgba(155, 114, 255, 0.2); }
+.msg-them { background: white; color: #333; align-self: flex-start; border-bottom-left-radius: 4px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); border: 1px solid #eee; }
+.chat-footer { padding: 15px; display: flex; gap: 10px; border-top: 1px solid #eee; background: white; }
+/* flex:1 + width:auto overrides the global `input{width:100%}` rule,
+   which otherwise fights the Send button for the row's width and
+   pushes it outside the container -- the input should take whatever
+   space Send doesn't need, not literally 100% of the flex row. */
+.chat-footer input { flex: 1; width: auto; min-width: 0; padding: 12px 15px; border-radius: 20px; }
+.chat-footer button { flex-shrink: 0; padding: 0 25px; border-radius: 20px; }
+
+.status-vacant { color: #28a745; font-weight: 800; }
+.status-full { color: #dc3545; font-weight: 800; }
+.rec-grid { display: flex; gap: 20px; overflow-x: auto; padding-bottom: 20px; }
+.rec-card { flex: 0 0 250px; background: white; padding: 25px; border-radius: 15px; border: 1px solid #eee; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 10px rgba(0,0,0,0.02); }
+.rec-card:hover { transform: translateY(-3px); box-shadow: 0 8px 20px rgba(0,0,0,0.08); border-color: #9B72FF; }
+.inbox-card { background: white; padding: 25px 30px; border-radius: 18px; cursor: pointer; display: flex; justify-content: space-between; border-left: 8px solid #9B72FF; margin-bottom: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.04); transition: 0.2s; }
+.inbox-card:hover { transform: translateX(5px); box-shadow: 0 8px 20px rgba(0,0,0,0.08); }
+/* Unread conversations (see renderInbox()'s isUnread) -- the same red
+   the header's #msg-badge already uses, on the card's existing left-
+   border accent, plus a faint tint so the card reads as "needs
+   attention" even before noticing the bolded text/count badge. */
+.inbox-card-unread { border-left-color: #dc3545; background: #FFFBFB; }
+/* ===== MODULE 4 : RATINGS & REVIEWS ===== */
+.card-rating { display: flex; align-items: center; gap: 6px; margin: 8px 0 4px; font-size: 14px; }
+.card-rating-num { font-weight: 700; color: #222; }
+.card-rating-count { color: #888; }
+.card-rating-none { color: #aaa; font-style: italic; }
+.star { font-size: 16px; letter-spacing: 1px; }
+.star-on { color: #FFB400; }
+.star-off { color: #DDD; }
+.rating-stars.small .star { font-size: 14px; }
+
+.reviews-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 22px; flex-wrap: wrap; gap: 15px; }
+.rating-summary { display: flex; align-items: center; gap: 22px; background: #F8F9FA; border: 1px solid #eee; border-radius: 16px; padding: 25px 30px; margin-bottom: 25px; }
+.rating-score { font-size: 48px; font-weight: 800; color: #9B72FF; line-height: 1; }
+.rating-stars .star { font-size: 20px; }
+.rating-count { color: #666; font-size: 14px; margin-top: 6px; }
+.no-reviews { color: #888; font-style: italic; }
+
+.review-card { background: white; border: 1px solid #eee; border-radius: 14px; padding: 22px 26px; margin-bottom: 16px; box-shadow: 0 3px 10px rgba(0,0,0,0.03); }
+.review-card.pending-own { background: #FFFDF5; border-color: #FFE9A8; }
+.review-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.review-date { color: #999; font-size: 13px; }
+.review-body { color: #444; font-size: 15px; line-height: 1.6; margin-top: 10px; }
+.report-review-btn { background: none; border: none; color: #999; font-size: 13px; cursor: pointer; margin-top: 10px; padding: 0; }
+.report-review-btn:hover { color: #dc3545; text-decoration: underline; }
+
+.star-picker { display: flex; gap: 10px; justify-content: center; margin-bottom: 8px; }
+.star-choice { font-size: 44px; color: #DDD; cursor: pointer; transition: transform 0.12s, color 0.12s; user-select: none; }
+.star-choice:hover { transform: scale(1.15); }
+.star-choice.picked { color: #FFB400; }
+.star-label { text-align: center; color: #666; font-weight: 600; margin-bottom: 22px; min-height: 22px; }
+
+/* ===== MODULE 5 : ADMIN CONSOLE ===== */
+.stat-num { font-size: 30px; color: #9B72FF; display: block; margin-top: 8px; font-weight: 700; }
+.admin-tabs { display: flex; gap: 10px; margin-bottom: 28px; flex-wrap: wrap; border-bottom: 2px solid #eee; padding-bottom: 0; }
+.admin-tab { background: transparent; border: none; border-bottom: 3px solid transparent; padding: 14px 22px; font-size: 15px; font-weight: 600; color: #888; cursor: pointer; font-family: inherit; transition: 0.2s; margin-bottom: -2px; }
+.admin-tab:hover { color: #9B72FF; }
+.admin-tab.active { color: #9B72FF; border-bottom-color: #9B72FF; }
+
+/* Audit log's category filter (see AUDIT_CATEGORIES/renderAuditLog() in
+   admin.js) -- deliberately a different shape (filled pill vs. the admin
+   tabs' underline) so it doesn't read as a second row of top-level tabs. */
+.audit-filter-bar { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+.audit-filter-btn { background: #F4F0FF; color: #9B72FF; border: none; padding: 8px 18px; border-radius: 20px; font-weight: 600; font-size: 13px; cursor: pointer; font-family: inherit; transition: 0.2s; }
+.audit-filter-btn:hover { background: #E8DFFF; }
+.audit-filter-btn.active { background: #9B72FF; color: white; }
+
+.mod-card { background: white; border: 1px solid #eee; border-left: 6px solid #FFB400; border-radius: 14px; padding: 24px 28px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; gap: 25px; box-shadow: 0 4px 12px rgba(0,0,0,0.04); flex-wrap: wrap; overflow-wrap: break-word; }
+.mod-body { flex: 1; min-width: 260px; }
+.mod-body h4 { font-size: 19px; color: #222; margin-bottom: 6px; }
+.mod-meta { color: #777; font-size: 14px; margin: 4px 0; overflow-wrap: break-word; }
+.mod-actions { display: flex; gap: 12px; }
+.btn-approve, .btn-reject, .btn-primary { border: none; padding: 12px 26px; border-radius: 9px; font-weight: 700; font-size: 14px; cursor: pointer; font-family: inherit; transition: 0.2s; }
+.btn-approve { background: #28a745; color: white; }
+.btn-approve:hover { background: #218838; transform: translateY(-2px); }
+.btn-reject { background: #f3f3f3; color: #dc3545; }
+.btn-reject:hover { background: #dc3545; color: white; }
+/* Same brand purple as .directions-btn/.add-btn (#9B72FF), sized to match
+   .btn-approve/.btn-reject so it drops into the same action row (e.g. the
+   My Profile modals) without looking mismatched -- for a neutral/primary
+   action that isn't a destructive or warning one, where .btn-reject's red
+   would send the wrong signal. */
+.btn-primary { background: #9B72FF; color: white; }
+.btn-primary:hover { background: #8655ff; }
+
+.pill { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
+.pill-ok { background: #E3F6E8; color: #1e7e34; }
+.pill-pending { background: #FFF4D6; color: #9A6B00; }
+.pill-bad { background: #FDE7E9; color: #b02a37; }
+
+.empty-state { background: white; border: 1px dashed #ccc; border-radius: 14px; padding: 45px; text-align: center; color: #888; font-size: 16px; }
+.audit-action { background: #F4F0FF; color: #9B72FF; padding: 3px 9px; border-radius: 6px; font-size: 13px; font-weight: 600; }
+
+/* ===== LANDOWNER VERIFICATION (documents) — shared by index.html and admin.html ===== */
+.verification-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 18px; }
+.verification-doc-card { flex-direction: column; align-items: stretch; border-left-width: 6px; }
+.verification-doc-card.status-none { border-left-color: #ccc; }
+.verification-doc-card.status-pending { border-left-color: #FFB400; }
+.verification-doc-card.status-approved { border-left-color: #28a745; }
+.verification-doc-card.status-rejected { border-left-color: #dc3545; }
+/* .mod-body's 260px min-width (above) is meant for the ROW layout other
+   .mod-card usages have (thumbnail/body/actions side by side, where it
+   stops the body column from getting squeezed illegibly next to them).
+   .verification-doc-card stacks everything in a single COLUMN instead,
+   so that floor no longer protects anything -- it just doesn't shrink
+   with the card at narrow widths (a student's My Profile modal has a
+   fixed 50px side padding that leaves very little room at phone width),
+   so the body -- and the upload row/file input beside it, stretched to
+   match via align-items:stretch -- overflowed straight past the card's
+   own border. min-width:0 lets this specific card's children shrink
+   with it like everything else here already does. */
+.verification-doc-card .mod-body { min-width: 0; }
+.verification-thumb { width: 100%; height: 140px; object-fit: cover; border-radius: 10px; cursor: zoom-in; margin-bottom: 14px; background: #f4f4f4; }
+.verification-upload-row { margin-top: 14px; min-width: 0; }
+.verification-upload-row input[type="file"] { font-size: 13px; width: 100%; max-width: 100%; }
+
+/* Document-review modal's consistency checklist (admin.html). */
+.checklist-item { display: flex; align-items: center; gap: 16px; padding: 8px 0; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+.checklist-item span { flex: 1; color: #444; }
+.checklist-item label { display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 13px; color: #666; white-space: nowrap; }
+.btn-approve:disabled, .btn-reject:disabled, .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ===== MOBILE (<=480px) =====
+   Nothing below here changes desktop layout — .portal-card's 340px
+   width, .auth-box's 480px width, and .main-header's single-row flex
+   all assumed a wide viewport with no fallback, which is what let
+   content get clipped by body's overflow-x:hidden on a real phone
+   instead of reflowing. */
+@media (max-width: 480px) {
+    .portal-options { flex-direction: column; width: 100%; padding: 0 24px; gap: 24px; }
+    .portal-card { width: 100%; padding: 34px 24px; }
+    .portal-logo { font-size: 42px; }
+    .portal-subtext { font-size: 15px; margin-bottom: 30px; }
+
+    .auth-box { width: 100%; max-width: 400px; padding: 30px 22px; margin: 0 20px; }
+    .input-row { flex-direction: column; gap: 12px; }
+
+    /* flex-wrap is the safety net that guarantees nothing gets cut off
+       (the actual bug) even if logo + nav-link + profile text + logout
+       can't all fit on one line on a given phone. When it does wrap,
+       .nav-right becomes its own full-width row below the logo — give
+       it width:100% (flex items don't stretch to fill a wrapped line on
+       their own) and justify-content:flex-end so Messages/username/
+       Logout land flush right on that row instead of bunching at its
+       left edge, which is where they'd otherwise sit since .nav-right's
+       own content is left-aligned by default. .header-divider is hidden
+       here (was purely decorative), so its margin no longer supplies
+       the gap between Messages and the user block — replaced with an
+       explicit gap on .nav-right. .user-profile's own gap is set to the
+       same 14px so the three visual groups (icon, username block,
+       Logout) read as evenly spaced even though Logout is nested one
+       level deeper in the DOM than the icon is. */
+    .main-header { padding: 12px 4%; flex-wrap: wrap; row-gap: 10px; }
+    .logo { font-size: 22px; }
+    .nav-right { width: 100%; justify-content: flex-end; font-size: 13px; gap: 14px; }
+    .header-divider { display: none; }
+    .user-profile { gap: 14px; }
+    .user-name { font-size: 13px; }
+
+    /* Text label -> icon on mobile (desktop keeps the label). #nav-messages
+       and #nav-myprofile are also script.js's click targets (onclick=
+       "openInbox()"/"openMyProfile()"), and script.js sets #nav-messages'
+       display:inline via inline style — !important is needed to switch it
+       to inline-flex here, same pattern already used for #routing-status
+       below. inline-flex + min-width/height is what actually delivers the
+       44px tap target: padding alone on an inline box doesn't reliably
+       guarantee a specific rendered box size. */
+    .nav-link-icon { display: inline-block; }
+    .nav-link-text { display: none; }
+    #nav-messages, #nav-myprofile {
+        display: inline-flex !important;
+        align-items: center; justify-content: center;
+        min-width: 44px; min-height: 44px;
+        position: relative;
+    }
+    .user-role { font-size: 10px; }
+    .logout-btn { padding: 7px 14px; font-size: 13px; }
+
+    .content { padding: 25px 4%; }
+    .search-bar { padding: 20px 4%; }
+    .airbnb-grid { grid-template-columns: 1fr; gap: 20px; }
+
+    /* Desktop's chat window is a floating 380px panel offset from the
+       right edge — fixed width + right:5% overflows the entire viewport
+       on a phone. Full width, flush to both edges, on mobile only. */
+    .chat-window { width: 100%; right: 0; left: 0; border-radius: 16px 16px 0 0; }
+
+    .stats-row { flex-direction: column; }
+    .dashboard-header { flex-direction: column; align-items: flex-start; gap: 15px; }
+
+    /* #routing-status is created by script.js with inline styles
+       (position:fixed; bottom:20px; left:20px;), so overriding it
+       responsively needs !important -- an external stylesheet can't
+       out-specificity an inline style otherwise. Pinning it under the
+       sticky header instead of the bottom-left corner keeps it clear
+       of the listing grid regardless of scroll position or how tall
+       the first card renders on a narrow/short phone screen. */
+    #routing-status {
+        top: 80px !important;
+        bottom: auto !important;
+        left: 12px !important;
+        right: 12px !important;
+        width: auto !important;
+        text-align: center;
+    }
+
+    /* "About the landowner" is a two-column row (identity + button) on
+       desktop; at phone width the button drops to its own full-width row
+       below the identity instead of squeezing onto the same line, and
+       spans edge-to-edge so it's still an easy 44px+ tap target. */
+    .landowner-about { flex-direction: column; align-items: stretch; padding: 16px 18px; }
+    .landowner-about-btn { width: 100%; }
+
+    /* The My Profile modals' Edit/verification-link button pair (see
+       renderLandownerProfileModal/renderStudentProfileModal's selfActions)
+       wraps to 2-3 lines each when squeezed side-by-side at phone width --
+       stack them instead of leaving both stretched tall to match whichever
+       wrapped furthest. Scoped to these two modals specifically rather
+       than the shared .mod-actions class, which is also used by the admin
+       console's (desktop-only) review actions. */
+    #landowner-profile-modal .mod-actions,
+    #student-profile-modal .mod-actions { flex-direction: column; }
+    #landowner-profile-modal .mod-actions button,
+    #student-profile-modal .mod-actions button { width: 100%; }
+}

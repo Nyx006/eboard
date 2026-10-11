@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light">
+    <title>E-Board Admin | Administrator Console</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="dir-admin.css">
+</head>
+<body>
+
+    <div id="admin-login-screen" class="portal-container">
+        <h1 class="portal-logo">E-BOARD</h1>
+        <div class="auth-box">
+            <h2>Administrator Sign In</h2>
+            <p class="admin-login-hint">Demo credentials: admin@eboard.ph / eboard2026</p>
+            <form onsubmit="adminLogin(event)">
+                <div style="display:flex; flex-direction:column; gap:20px;">
+                    <input type="email" id="admin-email" placeholder="Email" required>
+                    <input type="password" id="admin-password" placeholder="Password" required>
+                    <p id="admin-login-error" class="admin-login-error">Incorrect email or password.</p>
+                    <button type="submit" class="main-auth-btn">Sign In</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="admin-console" style="display: none;">
+        <header class="main-header admin-header">
+            <div class="logo">E-BOARD<span class="admin-badge">Admin</span></div>
+            <nav class="nav-right">
+                <div class="user-profile">
+                    <div class="profile-text">
+                        <span class="user-name" id="admin-display-name">System Admin</span>
+                        <span class="user-role">ADMINISTRATOR</span>
+                    </div>
+                    <button class="logout-btn" onclick="adminLogout()">Logout</button>
+                </div>
+            </nav>
+        </header>
+
+        <main class="content">
+            <div class="dashboard-header">
+                <h2>Administrator Console</h2>
+            </div>
+            <div class="stats-row">
+                <div class="stat-box">Pending Listings<br><span id="adm-stat-listings" class="stat-num">0</span></div>
+                <div class="stat-box">Pending Reviews<br><span id="adm-stat-reviews" class="stat-num">0</span></div>
+                <div class="stat-box">Reported Reviews<br><span id="adm-stat-reported" class="stat-num">0</span></div>
+                <div class="stat-box">Unverified Owners<br><span id="adm-stat-owners" class="stat-num">0</span></div>
+                <div class="stat-box">Live Listings<br><span id="adm-stat-live" class="stat-num">0</span></div>
+            </div>
+
+            <div class="admin-tabs">
+                <button class="admin-tab active" onclick="switchAdminTab('listings', this)">Property Verification</button>
+                <button class="admin-tab" onclick="switchAdminTab('reviews', this)">Review Moderation</button>
+                <button class="admin-tab" onclick="switchAdminTab('reported', this)">Reported Reviews</button>
+                <button class="admin-tab" onclick="switchAdminTab('owners', this)">Landowner Accounts</button>
+                <button class="admin-tab" onclick="switchAdminTab('students', this)">Student Accounts</button>
+                <button class="admin-tab" onclick="switchAdminTab('audit', this)">Audit Log</button>
+            </div>
+
+            <div id="admin-panel-listings" class="admin-panel"></div>
+            <div id="admin-panel-reviews" class="admin-panel" style="display:none;"></div>
+            <div id="admin-panel-reported" class="admin-panel" style="display:none;"></div>
+            <div id="admin-panel-owners" class="admin-panel" style="display:none;"></div>
+            <div id="admin-panel-students" class="admin-panel" style="display:none;"></div>
+            <div id="admin-panel-audit" class="admin-panel" style="display:none;"></div>
+        </main>
+    </div>
+
+    <div id="image-view-modal" class="modal" onclick="closeImageModal()">
+        <span class="close-btn" style="top: 25px; right: 40px; font-size: 50px; color: white;">×</span>
+        <img class="image-modal-content" id="expanded-img">
+    </div>
+
+    <div id="doc-review-modal" class="modal">
+        <div class="modal-form-content">
+            <span class="close-btn" onclick="closeDocReviewModal()">×</span>
+            <h2 style="color:#9B72FF; margin-bottom:10px; font-size:24px;">Review Document</h2>
+            <p id="doc-review-label" style="font-weight:600; margin-bottom:15px;"></p>
+            <div id="doc-review-thumb-wrap" style="margin-bottom:15px;"></div>
+
+            <p style="font-size:13px; color:#666; margin-bottom:10px;">
+                Consistency checklist — every item needs an answer before a decision can be recorded:
+            </p>
+            <div class="checklist-item">
+                <span>Name on the ID matches the account name</span>
+                <label><input type="radio" name="chk-name" value="yes" onchange="updateDocReviewGate()"> Yes</label>
+                <label><input type="radio" name="chk-name" value="no" onchange="updateDocReviewGate()"> No</label>
+            </div>
+            <div class="checklist-item">
+                <span>ID is unexpired, or is a type that does not expire (PhilSys National ID, UMID)</span>
+                <label><input type="radio" name="chk-id-unexpired" value="yes" onchange="updateDocReviewGate()"> Yes</label>
+                <label><input type="radio" name="chk-id-unexpired" value="no" onchange="updateDocReviewGate()"> No</label>
+            </div>
+            <div class="checklist-item">
+                <span>Photo and printed details are legible</span>
+                <label><input type="radio" name="chk-legible" value="yes" onchange="updateDocReviewGate()"> Yes</label>
+                <label><input type="radio" name="chk-legible" value="no" onchange="updateDocReviewGate()"> No</label>
+            </div>
+            <div class="checklist-item">
+                <span>If a PhilSys National ID: QR code verified at everify.gov.ph/check</span>
+                <label><input type="radio" name="chk-qr" value="yes" onchange="updateDocReviewGate()"> Yes</label>
+                <label><input type="radio" name="chk-qr" value="no" onchange="updateDocReviewGate()"> No</label>
+                <label><input type="radio" name="chk-qr" value="na" onchange="updateDocReviewGate()"> Not applicable</label>
+            </div>
+
+            <textarea id="doc-review-reason" placeholder="Reason (required if rejecting)"
+                style="width:100%; margin:15px 0; padding:12px; border:1px solid #ddd; border-radius:10px; min-height:70px; font-family:inherit; font-size:14px;"></textarea>
+
+            <div class="mod-actions">
+                <button id="doc-review-approve-btn" class="btn-approve" disabled onclick="submitDocDecision('approved')">Approve</button>
+                <button id="doc-review-reject-btn" class="btn-reject" disabled onclick="submitDocDecision('rejected')">Reject</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="student-doc-review-modal" class="modal">
+        <div class="modal-form-content">
+            <span class="close-btn" onclick="closeStudentDocReviewModal()">×</span>
+            <h2 style="color:#9B72FF; margin-bottom:10px; font-size:24px;">Review Document</h2>
+            <p id="student-doc-review-label" style="font-weight:600; margin-bottom:15px;"></p>
+            <div id="student-doc-review-thumb-wrap" style="margin-bottom:15px;"></div>
+
+            <p style="font-size:13px; color:#666; margin-bottom:10px;">
+                Consistency checklist — every item needs an answer before a decision can be recorded:
+            </p>
+            <div class="checklist-item">
+                <span>Name on the ID matches the account name</span>
+                <label><input type="radio" name="chk-s-name" value="yes" onchange="updateStudentDocReviewGate()"> Yes</label>
+                <label><input type="radio" name="chk-s-name" value="no" onchange="updateStudentDocReviewGate()"> No</label>
+            </div>
+            <div class="checklist-item">
+                <span>School on the ID matches the student's stated school</span>
+                <label><input type="radio" name="chk-s-school" value="yes" onchange="updateStudentDocReviewGate()"> Yes</label>
+                <label><input type="radio" name="chk-s-school" value="no" onchange="updateStudentDocReviewGate()"> No</label>
+            </div>
+            <div class="checklist-item">
+                <span>ID is for the current or a recent academic year</span>
+                <label><input type="radio" name="chk-s-year" value="yes" onchange="updateStudentDocReviewGate()"> Yes</label>
+                <label><input type="radio" name="chk-s-year" value="no" onchange="updateStudentDocReviewGate()"> No</label>
+            </div>
+            <div class="checklist-item">
+                <span>Photo and printed details are legible</span>
+                <label><input type="radio" name="chk-s-legible" value="yes" onchange="updateStudentDocReviewGate()"> Yes</label>
+                <label><input type="radio" name="chk-s-legible" value="no" onchange="updateStudentDocReviewGate()"> No</label>
+            </div>
+
+            <textarea id="student-doc-review-reason" placeholder="Reason (required if rejecting)"
+                style="width:100%; margin:15px 0; padding:12px; border:1px solid #ddd; border-radius:10px; min-height:70px; font-family:inherit; font-size:14px;"></textarea>
+
+            <div class="mod-actions">
+                <button id="student-doc-review-approve-btn" class="btn-approve" disabled onclick="submitStudentDocDecision('approved')">Approve</button>
+                <button id="student-doc-review-reject-btn" class="btn-reject" disabled onclick="submitStudentDocDecision('rejected')">Reject</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+</html>

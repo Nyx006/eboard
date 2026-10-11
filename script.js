@@ -532,12 +532,25 @@ function loadRoadNetwork() {
     // while testing without needing any permanent UI for it.
     const forceRefresh = new URLSearchParams(location.search).has('refreshRoads');
 
+    /* In the page flow at the top of the listings area, not
+       position:fixed. As a fixed overlay it sat on top of whatever was
+       under it -- on phones the header wraps taller than the 80px the
+       old mobile override assumed, so it covered the Logout button on
+       every index load, and it floated above open modals (it covered the
+       review modal's title when returning from directions.html). In the
+       flow it can't overlap a control, and an open modal covers it.
+
+       Only shown if loading takes longer than BANNER_DELAY_MS: a cached
+       graph is ready in ~20-200 ms, so a returning visitor never sees it
+       flash (and the grid doesn't jump). Failure is always shown. */
+    const BANNER_DELAY_MS = 400;
     const banner = document.createElement('div');
     banner.id = 'routing-status';
-    banner.style.cssText = 'position:fixed;bottom:20px;left:20px;z-index:5000;background:#9B72FF;color:#fff;' +
-        'padding:12px 22px;border-radius:10px;font-size:14px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.2);';
+    banner.style.cssText = 'margin:0 0 20px;background:#9B72FF;color:#fff;text-align:center;' +
+        'padding:12px 22px;border-radius:10px;font-size:14px;font-weight:600;';
     banner.innerText = 'Loading Legazpi road network…';
-    document.body.appendChild(banner);
+    const showBanner = () => { if (!banner.isConnected) document.querySelector('#student-view .content').prepend(banner); };
+    const bannerTimer = setTimeout(showBanner, BANNER_DELAY_MS);
 
     EBoardRouter.init({ forceRefresh })
         .then((graph) => {
@@ -554,12 +567,16 @@ function loadRoadNetwork() {
                 openDetails(currentPropertyId);
             }
 
+            clearTimeout(bannerTimer);
+            if (!banner.isConnected) return; // finished before the banner was ever shown
             banner.style.background = '#28a745';
             banner.innerText = 'Road network loaded — routing active';
             setTimeout(() => banner.remove(), 2500);
         })
         .catch(err => {
             console.error('[E-Board] routing unavailable:', err);
+            clearTimeout(bannerTimer);
+            showBanner();
             banner.style.background = '#dc3545';
             banner.innerText = 'Road network unavailable — showing estimated distances';
             setTimeout(() => banner.remove(), 5000);

@@ -124,6 +124,15 @@ html, body { height: 100%; }
 
     .directions-map { flex: none; width: 100%; height: 45vh; min-height: 260px; }
 
+    /* Sticky so the map (and Street View, which lives inside it) stays
+       on screen while the panel scrolls underneath. Without this the
+       play controls sit below the fold on a phone, and scrolling down to
+       them pushed the top of the map off-screen -- the follow-cam keeps
+       the walker at the map's centre, so on a 360px phone the walker was
+       off-screen for the entire preview. z-index keeps the scrolling
+       panel underneath it rather than over it. */
+    .directions-map { position: sticky; top: 0; z-index: 10; }
+
     .directions-panel {
         width: 100%;
         height: auto;

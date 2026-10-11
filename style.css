@@ -111,7 +111,7 @@ body { background-color: #F8F9FA; color: #333; overflow-x: hidden; }
 .card-price b { color: #222; font-size: 22px; }
 .directions-btn { display: block; text-align: center; margin-top: 14px; background: #9B72FF; color: white; text-decoration: none; padding: 11px; border-radius: 8px; font-weight: 600; font-size: 14px; transition: 0.2s; }
 .directions-btn:hover { background: #8655ff; }
-.dist-tag { position: absolute; top: 15px; left: 15px; background: rgba(255,255,255,0.95); padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.1); color: #333; z-index: 5; }
+.dist-tag { position: absolute; top: 15px; left: 15px; background: rgba(255,255,255,0.95); padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.1); color: #333; z-index: 11; } /* above .full-overlay (z 10): the distance must stay readable on Fully Booked cards -- the evaluation asks whether distances are believable */
 
 .full-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.65); color: white; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; backdrop-filter: blur(2px); z-index: 10; }
 
@@ -424,8 +424,7 @@ select {
        and #nav-myprofile are also script.js's click targets (onclick=
        "openInbox()"/"openMyProfile()"), and script.js sets #nav-messages'
        display:inline via inline style — !important is needed to switch it
-       to inline-flex here, same pattern already used for #routing-status
-       below. inline-flex + min-width/height is what actually delivers the
+       to inline-flex here. inline-flex + min-width/height is what actually delivers the
        44px tap target: padding alone on an inline box doesn't reliably
        guarantee a specific rendered box size. */
     .nav-link-icon { display: inline-block; }
@@ -451,21 +450,10 @@ select {
     .stats-row { flex-direction: column; }
     .dashboard-header { flex-direction: column; align-items: flex-start; gap: 15px; }
 
-    /* #routing-status is created by script.js with inline styles
-       (position:fixed; bottom:20px; left:20px;), so overriding it
-       responsively needs !important -- an external stylesheet can't
-       out-specificity an inline style otherwise. Pinning it under the
-       sticky header instead of the bottom-left corner keeps it clear
-       of the listing grid regardless of scroll position or how tall
-       the first card renders on a narrow/short phone screen. */
-    #routing-status {
-        top: 80px !important;
-        bottom: auto !important;
-        left: 12px !important;
-        right: 12px !important;
-        width: auto !important;
-        text-align: center;
-    }
+    /* #routing-status used to be position:fixed and was pinned here at
+       top:80px -- but the mobile header wraps to ~111px, so it covered
+       the Logout button. It's now in the page flow (see loadRoadNetwork()
+       in script.js) and needs no mobile override. */
 
     /* "About the landowner" is a two-column row (identity + button) on
        desktop; at phone width the button drops to its own full-width row

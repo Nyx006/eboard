@@ -124,12 +124,13 @@
                                 </select>
                             </div>
                             <div class="filter-field">
-                                <label for="filter-room">Boarders per room</label>
+                                <label for="filter-room">Max boarders per room</label>
                                 <select id="filter-room" onchange="renderAll()">
                                     <option value="0">Any</option>
-                                    <option value="1">Solo room (1)</option>
-                                    <option value="2">Up to 2</option>
-                                    <option value="4">Up to 4</option>
+                                    <option value="1">1 (solo)</option>
+                                    <option value="2">2</option>
+                                    <option value="3">3</option>
+                                    <option value="4">4</option>
                                 </select>
                             </div>
                             <label class="filter-check"><input type="checkbox" id="filter-pets" onchange="renderAll()"> Pets allowed</label>
@@ -315,8 +316,8 @@
                     <div class="field"><label class="field-label" for="add-price">Monthly price (₱)</label><input type="number" id="add-price" min="0" placeholder="e.g. 4500" required></div>
                 </div>
                 <div class="input-row" style="margin-bottom: 15px;">
-                    <div class="field"><label class="field-label" for="add-total">Total capacity (boarders)</label><input type="number" id="add-total" min="1" required></div>
-                    <div class="field"><label class="field-label" for="add-available">Currently available</label><input type="number" id="add-available" min="0" required></div>
+                    <div class="field"><label class="field-label" for="add-total">Total rooms</label><input type="number" id="add-total" min="1" required oninput="updateRoomsSummary(this)"></div>
+                    <div class="field"><label class="field-label" for="add-available">Vacant rooms</label><input type="number" id="add-available" min="0" required></div>
                 </div>
                 <h4 style="margin: 20px 0 12px 0; font-size: 15px; color: #444;">Amenities</h4>
                 <div class="amenities-toggle-grid">
@@ -326,11 +327,16 @@
                     <label><input type="checkbox" value="🍳 Kitchen"> Kitchen</label>
                     <label><input type="checkbox" value="🚿 Bathroom"> Bathroom</label>
                     <label><input type="checkbox" value="📷 CCTV"> CCTV</label>
-                    <label><input type="checkbox" value="⚡ Electricity"> Electricity</label>
                     <label><input type="checkbox" value="❄️ Aircon"> Aircon</label>
                 </div>
                 <h4 style="margin: 20px 0 12px 0; font-size: 15px; color: #444;">Rooms &amp; house rules</h4>
-                <div class="field" style="margin-bottom: 15px;"><label class="field-label" for="add-room-capacity">Boarders per room</label><input type="number" id="add-room-capacity" min="1" placeholder="e.g. 2" required></div>
+                <!-- Room types: built by renderRoomRows() in script.js. -->
+                <fieldset class="rooms-fieldset">
+                    <legend class="field-label">Room types</legend>
+                    <div class="room-rows" id="add-room-rows"></div>
+                    <button type="button" class="room-add" onclick="addRoomRow('add')">+ Add room type</button>
+                    <p class="rooms-summary" id="add-rooms-summary" aria-live="polite"></p>
+                </fieldset>
                 <fieldset class="rules-fieldset" id="add-rules"><legend class="field-label">House rules</legend></fieldset>
                 <div class="field" style="margin-bottom: 15px;"><label class="field-label" for="add-other-rules">Other rules (optional)</label><textarea id="add-other-rules" class="form-textarea" maxlength="300" rows="3" placeholder="e.g. Lights out at 11 PM; no loud music"></textarea></div>
                 <div class="input-row" style="margin-bottom: 15px;">
@@ -369,8 +375,8 @@
                     <div class="field"><label class="field-label" for="edit-price">Monthly price (₱)</label><input type="number" id="edit-price" min="0" placeholder="e.g. 4500" required></div>
                 </div>
                 <div class="input-row" style="margin-bottom: 15px;">
-                    <div class="field"><label class="field-label" for="edit-total">Total capacity (boarders)</label><input type="number" id="edit-total" min="1" required></div>
-                    <div class="field"><label class="field-label" for="edit-available">Currently available</label><input type="number" id="edit-available" min="0" required></div>
+                    <div class="field"><label class="field-label" for="edit-total">Total rooms</label><input type="number" id="edit-total" min="1" required oninput="updateRoomsSummary(this)"></div>
+                    <div class="field"><label class="field-label" for="edit-available">Vacant rooms</label><input type="number" id="edit-available" min="0" required></div>
                 </div>
                 <h4 style="margin: 20px 0 12px 0; font-size: 15px; color: #444;">Amenities</h4>
                 <div class="amenities-toggle-grid" id="edit-amenities-grid">
@@ -380,11 +386,16 @@
                     <label><input type="checkbox" value="🍳 Kitchen"> Kitchen</label>
                     <label><input type="checkbox" value="🚿 Bathroom"> Bathroom</label>
                     <label><input type="checkbox" value="📷 CCTV"> CCTV</label>
-                    <label><input type="checkbox" value="⚡ Electricity"> Electricity</label>
                     <label><input type="checkbox" value="❄️ Aircon"> Aircon</label>
                 </div>
                 <h4 style="margin: 20px 0 12px 0; font-size: 15px; color: #444;">Rooms &amp; house rules</h4>
-                <div class="field" style="margin-bottom: 15px;"><label class="field-label" for="edit-room-capacity">Boarders per room</label><input type="number" id="edit-room-capacity" min="1" placeholder="e.g. 2" required></div>
+                <!-- Room types: built by renderRoomRows() in script.js. -->
+                <fieldset class="rooms-fieldset">
+                    <legend class="field-label">Room types</legend>
+                    <div class="room-rows" id="edit-room-rows"></div>
+                    <button type="button" class="room-add" onclick="addRoomRow('edit')">+ Add room type</button>
+                    <p class="rooms-summary" id="edit-rooms-summary" aria-live="polite"></p>
+                </fieldset>
                 <fieldset class="rules-fieldset" id="edit-rules"><legend class="field-label">House rules</legend></fieldset>
                 <div class="field" style="margin-bottom: 15px;"><label class="field-label" for="edit-other-rules">Other rules (optional)</label><textarea id="edit-other-rules" class="form-textarea" maxlength="300" rows="3" placeholder="e.g. Lights out at 11 PM; no loud music"></textarea></div>
                 <div class="input-row" style="margin-bottom: 15px;">

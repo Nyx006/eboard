@@ -554,6 +554,36 @@ select {
 .audit-page-btn:disabled { opacity: 0.4; cursor: default; }
 .audit-page-info { font-size: 14px; color: #555; }
 
+/* ---- Listing form: room types ---- */
+.rooms-fieldset { border: 1px solid #eee; background: #F8F9FA; border-radius: 12px; padding: 14px 16px; margin-bottom: 15px; }
+.rooms-fieldset legend { padding: 0 6px; }
+.room-rows { display: flex; flex-direction: column; gap: 8px; }
+.room-row { display: grid; grid-template-columns: 58px auto 58px auto 40px; align-items: center; gap: 6px; }
+/* Open spaces: its own line under the row (spans the grid), so the row
+   itself still fits at 360px. Hidden for solo rooms via [hidden]. */
+.room-open { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; }
+.room-open[hidden] { display: none; }
+.room-open-sep { color: #999; display: none; } /* shown only when on one line (wide screens) */
+.room-open .room-open-count { width: 58px; flex: none; }
+.room-open-word { font-size: 14px; color: #444; }
+.room-type-line { display: block; }
+/* Wider than a phone: everything on one line, as in the form mockup --
+   [3] rooms for [2] people · [1] space still open  x */
+@media (min-width: 481px) {
+    .room-row { grid-template-columns: 58px auto 58px auto 1fr 40px; }
+    .room-open { grid-column: 5; grid-row: 1; }
+    .room-open-sep { display: inline; }
+    .room-row .room-remove { grid-column: 6; grid-row: 1; }
+}
+.room-row input { padding: 10px 6px; text-align: center; font-size: 16px; }
+.room-word, .room-people { font-size: 14px; color: #444; white-space: nowrap; }
+.room-remove { width: 40px; height: 40px; border-radius: 8px; border: 1px solid #ddd; background: white; color: #b02a37; font-size: 16px; cursor: pointer; justify-self: end; }
+.room-remove:disabled { color: #ccc; cursor: default; }
+.room-add, .room-remove { user-select: none; -webkit-tap-highlight-color: transparent; }
+.room-add { margin-top: 10px; min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px dashed #9B72FF; background: white; color: #6b4fc4; font-weight: 700; font-size: 14px; font-family: inherit; cursor: pointer; }
+.rooms-summary { margin-top: 10px; font-size: 14px; font-weight: 600; color: #444; }
+.rooms-summary-over { color: #b02a37; }
+
 @media (max-width: 480px) {
     /* Rule rows: name above three equal-width choices. */
     .rule-row { flex-direction: column; align-items: stretch; gap: 8px; }
@@ -562,6 +592,11 @@ select {
     .rule-options span { width: 100%; padding: 0 6px; }
 
     .rules-facts { grid-template-columns: 1fr; }
+    /* The listing modals kept their 50px desktop padding on phones,
+       leaving ~226px for the form at 360px -- too narrow for a room-type
+       row. Only these two modals; the others are left as they were. */
+    #add-listing-modal .modal-form-content, #edit-listing-modal .modal-form-content { padding: 28px 18px; }
+    .rooms-fieldset, .rules-fieldset { padding-left: 12px; padding-right: 12px; }
     .filter-grid { grid-template-columns: 1fr; }
     .audit-pager { justify-content: center; }
     .audit-page-info { order: -1; width: 100%; text-align: center; }

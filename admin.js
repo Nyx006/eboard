@@ -389,7 +389,7 @@ function renderAdminListings(pending) {
             <div class="mod-body">
                 <h4>${escapeHtml(h.name)}</h4>
                 <p class="mod-meta">📍 ${escapeHtml(h.location)} &nbsp;·&nbsp; ₱${h.price}/month
-                   &nbsp;·&nbsp; ${h.available}/${h.total} slots</p>
+                   &nbsp;·&nbsp; ${h.available} of ${h.total} rooms vacant</p>
                 <p class="mod-meta">Owner: ${escapeHtml(h.owner || 'Unknown')}
                    &nbsp;·&nbsp; Coordinates: ${h.coords[0].toFixed(5)}, ${h.coords[1].toFixed(5)}</p>
             </div>
@@ -758,7 +758,7 @@ function renderOwnerDetail(panel, owner) {
                     <div class="mod-body">
                         <h4>${escapeHtml(h.name)}</h4>
                         <p class="mod-meta">📍 ${escapeHtml(h.location)} &nbsp;·&nbsp; ₱${h.price}/month
-                           &nbsp;·&nbsp; ${h.available}/${h.total} slots</p>
+                           &nbsp;·&nbsp; ${h.available} of ${h.total} rooms vacant</p>
                     </div>
                     <span class="pill ${statusPill}">${escapeHtml(h.status)}</span>
                 </div>`;

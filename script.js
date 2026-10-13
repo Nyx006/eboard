@@ -202,22 +202,82 @@ const HOUSE_RULES = [
     { key: 'overnightGuests', label: 'Overnight guests', icon: '🌙' }
 ];
 
-/* roomCapacity, rules, otherRules, minStay and curfew were added for the
+/* ---- ROOM TYPES ----
+   A listing's rooms are a list of types, each "count rooms that sleep
+   capacity people": [{ capacity: 1, count: 2 }, { capacity: 2, count: 3 }]
+   is 2 solo rooms + 3 doubles. Replaces the single roomCapacity number
+   (13 Oct), which assumed every room in a house is the same size --
+   Legazpi boarding houses mostly aren't. `total` (rooms) and `available`
+   (vacant rooms) are separate fields and unchanged; per-room vacancy is
+   a later phase. Sum of counts may not exceed `total` (see roomsError). */
+const MAX_ROOM_CAPACITY = 12; // sanity cap on people per room, not a policy
+
+// { rooms: number of rooms, boarders: beds across them }
+function roomTotals(rooms) {
+    return (rooms || []).reduce((t, r) => ({ rooms: t.rooms + r.count, boarders: t.boarders + r.count * r.capacity }),
+        { rooms: 0, boarders: 0 });
+}
+
+/* openSlots -- "spaces still open" in a SHARED room type (capacity >= 2):
+   how many more boarders it can take. DISPLAY-ONLY: nothing reads it but
+   the details page and the form. `available` (vacant rooms) and `total`
+   (rooms) keep their meaning, and the cards, the vacancies-only and
+   max-boarders filters and the admin console never look at it. Absent
+   means "not stated" -- never defaulted to 0, which would read as full.
+   Two numbers now describe availability and a landowner could update
+   them inconsistently; that is accepted and disclosed, not reconciled. */
+function openSlotsText(n) {
+    return n === 0 ? 'no spaces still open' : `${n} space${n === 1 ? '' : 's'} still open`;
+}
+
+// One room type, for the details page: "2 solo rooms",
+// "3 rooms for 2 — 1 space still open" (note only when stated).
+function describeRoomType(r) {
+    const base = r.capacity === 1
+        ? `${r.count} solo room${r.count === 1 ? '' : 's'}`
+        : `${r.count} room${r.count === 1 ? '' : 's'} for ${r.capacity}`;
+    return (r.capacity >= 2 && Number.isInteger(r.openSlots)) ? `${base} — ${openSlotsText(r.openSlots)}` : base;
+}
+
+// Rows for the same capacity are merged (2 doubles + 1 double = 3
+// doubles), then sorted smallest room first, so stored data has one
+// entry per size regardless of how the form was filled in. Open spaces
+// merge only if EVERY merged row stated them -- adding a stated 1 to a
+// blank would understate the real number, so that merges to "not stated".
+// Never kept for solo rooms (`available` already says whether one is free).
+function normalizeRooms(rows) {
+    const byCapacity = new Map();
+    rows.forEach(r => {
+        const m = byCapacity.get(r.capacity) || { capacity: r.capacity, count: 0, open: 0, allStated: true };
+        m.count += r.count;
+        if (Number.isInteger(r.openSlots)) m.open += r.openSlots; else m.allStated = false;
+        byCapacity.set(r.capacity, m);
+    });
+    return [...byCapacity.values()].sort((a, b) => a.capacity - b.capacity).map(m => {
+        const type = { capacity: m.capacity, count: m.count };
+        if (m.capacity >= 2 && m.allStated) type.openSlots = m.open;
+        return type;
+    });
+}
+
+/* rooms, rules, otherRules, minStay and curfew were added for the
    panel's listing-form feedback -- see DEMO_LISTING_EXTRAS below for the
-   backfill onto browsers that saved these three before the fields existed. */
+   backfill onto browsers that saved these three before the fields existed.
+   (These used to carry a single roomCapacity; now mixed room types, which
+   is the point of the change, so the demo data has to show it.) */
 const DEMO_LISTING_EXTRAS = {
-    1: { roomCapacity: 2, rules: { pets: 'no', smoking: 'no', cooking: 'yes', visitors: 'yes', alcohol: 'no', overnightGuests: 'no' },
+    1: { rooms: [{ capacity: 1, count: 2 }, { capacity: 2, count: 3, openSlots: 0 }], rules: { pets: 'no', smoking: 'no', cooking: 'yes', visitors: 'yes', alcohol: 'no', overnightGuests: 'no' },
          otherRules: 'Lights out at 11 PM. Visitors stay in the receiving area.', minStay: '1 semester', curfew: '10:00 PM' },
-    2: { roomCapacity: 1, rules: { pets: 'yes', smoking: 'no', cooking: 'yes', visitors: 'yes', overnightGuests: 'no' },
+    2: { rooms: [{ capacity: 1, count: 2 }, { capacity: 2, count: 1, openSlots: 1 }], rules: { pets: 'yes', smoking: 'no', cooking: 'yes', visitors: 'yes', overnightGuests: 'no' },
          otherRules: 'Small pets only (cats, small dogs). Owner must clean up after them.', minStay: '1 month', curfew: 'None' },
-    3: { roomCapacity: 4, rules: { smoking: 'no', cooking: 'no', visitors: 'no', alcohol: 'no' },
+    3: { rooms: [{ capacity: 3, count: 4, openSlots: 2 }, { capacity: 4, count: 6, openSlots: 3 }], rules: { smoking: 'no', cooking: 'no', visitors: 'no', alcohol: 'no' },
          otherRules: '', minStay: '1 school year', curfew: '9:00 PM' }
 };
 
 const defaultHouses = [
-    { id: 1, name: "Rawis Boarding house", owner: "Mr. Lopez", price: 5500, available: 0, total: 5, location: "Purok 6, Rawis", coords: [13.164005, 123.750120], verificationTier: 'FULLY_VERIFIED', amenities: ["🛏️ Bed", "📶 WiFi", "⚡ Electricity"], streetPhotos: [placeholderExterior], ...DEMO_LISTING_EXTRAS[1] },
-    { id: 2, name: "Legazpi Student Hub", owner: "Mrs. Santos", price: 6000, available: 1, total: 3, location: "Rawis Main St.", coords: [13.163495, 123.752880], verificationTier: 'ID_VERIFIED', amenities: ["🍳 Kitchen", "📷 CCTV", "❄️ Aircon"], streetPhotos: [placeholderExterior], ...DEMO_LISTING_EXTRAS[2] },
-    { id: 3, name: "Purok 6 Annex", owner: "Mr. Briz", price: 4500, available: 3, total: 10, location: "Purok 6, Rawis", coords: [13.165000, 123.749484], verificationTier: 'UNVERIFIED', amenities: ["💧 Water", "📷 CCTV", "⚡ Electricity"], streetPhotos: [placeholderExterior], ...DEMO_LISTING_EXTRAS[3] }
+    { id: 1, name: "Rawis Boarding house", owner: "Mr. Lopez", price: 5500, available: 0, total: 5, location: "Harvard St., Rawis", coords: [13.167150, 123.750765], verificationTier: 'FULLY_VERIFIED', amenities: ["🛏️ Bed", "📶 WiFi"], streetPhotos: [placeholderExterior], ...DEMO_LISTING_EXTRAS[1] },
+    { id: 2, name: "Legazpi Student Hub", owner: "Mrs. Santos", price: 6000, available: 1, total: 3, location: "Laplaya Village Road, Bonot", coords: [13.159675, 123.752913], verificationTier: 'ID_VERIFIED', amenities: ["🍳 Kitchen", "📷 CCTV", "❄️ Aircon"], streetPhotos: [placeholderExterior], ...DEMO_LISTING_EXTRAS[2] },
+    { id: 3, name: "Purok 6 Annex", owner: "Mr. Briz", price: 4500, available: 3, total: 10, location: "Magnolia St., Gogon", coords: [13.156762, 123.746576], verificationTier: 'UNVERIFIED', amenities: ["💧 Water", "📷 CCTV"], streetPhotos: [placeholderExterior], ...DEMO_LISTING_EXTRAS[3] }
 ];
 
 /* One seeded thread between the app's one real student and one real
@@ -339,7 +399,7 @@ if (!['UNVERIFIED', 'DOCUMENTS_SUBMITTED', 'ID_VERIFIED', 'SITE_VISITED', 'FULLY
 if (!landownerProfile.memberSince) landownerProfile.memberSince = LANDOWNER_MEMBER_SINCE;
 
 /* Migration: the three demo listings saved by a browser before
-   roomCapacity/rules/otherRules/minStay/curfew existed get those fields
+   rooms/rules/otherRules/minStay/curfew existed get those fields
    from DEMO_LISTING_EXTRAS. Matched on id AND original owner so a
    listing that merely reuses id 1-3 isn't touched, and each field is
    filled only where absent -- a value a landowner set is never
@@ -351,32 +411,81 @@ houses.forEach(h => {
     for (const [field, value] of Object.entries(extras)) {
         if (h[field] === undefined) h[field] = value;
     }
+    // The fill above skips `rooms` only if it's already there. These
+    // three can only ever have carried the 13 Oct demo roomCapacity (no
+    // account can edit them), so drop it rather than converting it below
+    // -- converting would turn their mixed demo rooms into uniform ones.
+    delete h.roomCapacity;
+    // Demo rooms saved before openSlots existed: give each SHARED type the
+    // demo value for the same capacity. Guarded on openSlots being absent,
+    // so it fires once. (Non-demo listings need nothing: no openSlots is
+    // already "not stated", and nothing adds it.)
+    (h.rooms || []).forEach(r => {
+        const demo = extras.rooms.find(d => d.capacity === r.capacity);
+        if (r.capacity >= 2 && r.openSlots === undefined && demo && Number.isInteger(demo.openSlots)) r.openSlots = demo.openSlots;
+    });
 });
 
-/* Migration (privacy, 2026-10-14): the three demo pins originally sat
-   on real boarding houses in Purok 6, Rawis -- one of them a
-   researcher's residence -- while carrying invented prices, rules and
-   owners, and two carried a verification badge nobody earned. They
-   were moved 110 m, to points 4-8 m from a road (chosen with
-   EBoardRouter.nearestNodeDistance()); defaultHouses above holds the
-   new values, repeated here for browsers that saved the old ones.
+/* Migration: a listing saved with the old single roomCapacity number
+   becomes one room type at that size, counting all of its `total` rooms
+   (the only reading the old data supports). The demo three were already
+   handled above. Guarded on "roomCapacity present, rooms absent", and
+   roomCapacity is deleted, so it fires once. */
+houses.forEach(h => {
+    if (Number.isInteger(h.roomCapacity) && !Array.isArray(h.rooms)) {
+        h.rooms = [{ capacity: h.roomCapacity, count: h.total }];
+    }
+    delete h.roomCapacity;
+});
 
-   Deliberately does NOT list the old coordinates: this file is public,
-   and naming them here would republish exactly what the move removes.
-   It doesn't need to -- no account can edit these three listings
-   (their owners are flavor-text names; landowners only edit their own,
-   and the admin console doesn't edit coordinates), so any demo pin not
-   already at its new spot is an old one. Matched on id + original
-   owner; within ~1 m (1e-5 degrees) counts as already moved, so a value
-   that round-tripped through JSON doesn't re-trigger it. Fires once. */
-const DEMO_NEW_COORDS = { 1: [13.164005, 123.750120], 2: [13.163495, 123.752880], 3: [13.165000, 123.749484] };
+/* Migration: "⚡ Electricity" was removed as an amenity (panel feedback:
+   no boarding house here lacks it, so it told students nothing). Strip it
+   from every saved listing. Guarded on its presence, and the checkbox is
+   gone so nothing can add it back -- fires once, then never matches. */
+const RETIRED_AMENITIES = ['⚡ Electricity'];
+houses.forEach(h => {
+    if (Array.isArray(h.amenities) && h.amenities.some(a => RETIRED_AMENITIES.includes(a))) {
+        h.amenities = h.amenities.filter(a => !RETIRED_AMENITIES.includes(a));
+    }
+});
+
+/* Migration (privacy, 2026-10-14): where the three demo listings sit.
+   Their first pins were on real boarding houses -- one
+   a researcher's residence -- while carrying invented prices, rules and
+   owners, and two an unearned verification badge. A first replacement
+   was picked by road proximity alone and landed two pins inside the
+   UST-Legazpi campus and one in the Albay Regional Center; a point near
+   a road says nothing about being public land, since campuses and
+   compounds have roads of their own. A second hand-picked set put two
+   pins within 25 m of real boarding houses. These are on public roads,
+   at least 150 m from every real boarding house in the coverage sample
+   (checked locally -- those coordinates are never in this file), and
+   checked on satellite imagery. The location text moves with
+   the pin: a listing whose stated street/barangay contradicts its own pin
+   is a data inconsistency, and the landowner evaluation asks owners to
+   rate whether the pin matches the property.
+
+   Deliberately lists only the CURRENT values: this file is public, and
+   naming earlier coordinates here would republish exactly what the move
+   removes. It doesn't need them -- no account can edit these three
+   listings (their owners are flavor-text names; landowners only edit
+   their own, and the admin console edits neither coordinates nor
+   location), so a demo listing not already at these values is an older
+   copy. Matched on id + original owner. Coordinates within ~1 m (1e-5
+   degrees) count as already moved, so a value that round-tripped through
+   JSON doesn't re-trigger it. Once applied, nothing matches -- fires once. */
+const DEMO_PLACES = {
+    1: { coords: [13.167150, 123.750765], location: 'Harvard St., Rawis' },
+    2: { coords: [13.159675, 123.752913], location: 'Laplaya Village Road, Bonot' },
+    3: { coords: [13.156762, 123.746576], location: 'Magnolia St., Gogon' }
+};
 const nearlyEqual = (a, b) => Math.abs(Number(a) - Number(b)) < 1e-5;
 houses.forEach(h => {
-    const newPin = DEMO_NEW_COORDS[h.id];
-    if (!newPin || h.owner !== DEMO_OWNERS[h.id] || !Array.isArray(h.coords)) return;
-    if (!(nearlyEqual(h.coords[0], newPin[0]) && nearlyEqual(h.coords[1], newPin[1]))) {
-        h.coords = [...newPin];
-    }
+    const place = DEMO_PLACES[h.id];
+    if (!place || h.owner !== DEMO_OWNERS[h.id]) return;
+    const atPin = Array.isArray(h.coords) && nearlyEqual(h.coords[0], place.coords[0]) && nearlyEqual(h.coords[1], place.coords[1]);
+    if (!atPin) h.coords = [...place.coords];
+    if (h.location !== place.location) h.location = place.location;
 });
 
 /* On a brand-new session nothing has been saved yet — the demo data
@@ -1508,7 +1617,7 @@ function renderAll() {
                     </div>
                     <div class="card-info">
                         <div class="card-title">
-                            ${h.name} 
+                            ${escapeHtml(h.name)} 
                             ${tierBadgeHtml(h.verificationTier)}
                         </div>
                         ${ratingRow}
@@ -1516,8 +1625,8 @@ function renderAll() {
                            onclick="event.stopPropagation(); openLandownerProfile(this.dataset.owner)">
                            ${initialsAvatarHtml(h.owner, h.owner, 26)} ${escapeHtml(h.owner)}
                         </p>
-                        <p class="card-location">📍 ${h.location}</p>
-                        <p class="card-location">${h.available}/${h.total} spots remaining</p>
+                        <p class="card-location">📍 ${escapeHtml(h.location)}</p>
+                        <p class="card-location">${h.available} of ${h.total} rooms vacant</p>
                         <p class="card-price"><b>₱${h.price}</b> / month</p>
                         <a class="directions-btn"
                            href="directions.html?id=${h.id}&school=${schoolIdx}&from=grid"
@@ -1527,8 +1636,8 @@ function renderAll() {
         }
 
         dash.innerHTML += `<tr>
-            <td style="font-weight:600; color:#9B72FF; font-size:16px;">${h.name}</td>
-            <td>${h.location}</td>
+            <td style="font-weight:600; color:#9B72FF; font-size:16px;">${escapeHtml(h.name)}</td>
+            <td>${escapeHtml(h.location)}</td>
             <td>₱ ${h.price}</td>
             <td>${h.available} / ${h.total}</td>
             <td class="${sClass}">${h.available>0?'Vacant':'Full'}<br>
@@ -1580,8 +1689,10 @@ function passesFilters(house, query, f) {
                    house.location.toLowerCase().includes(query))) return false;
     if (f.maxPrice > 0 && house.price > f.maxPrice) return false;
     if (f.maxDist > 0 && house.tempDist > f.maxDist) return false; // road distance once the graph loads
-    // A listing that hasn't said how many share a room can't promise "solo" or "up to 2".
-    if (f.maxRoom > 0 && !(house.roomCapacity > 0 && house.roomCapacity <= f.maxRoom)) return false;
+    // "Max boarders per room": at least one room type no bigger than N --
+    // someone who'll share with at most one other is happy with a solo
+    // room too. A listing with no room data can't promise that.
+    if (f.maxRoom > 0 && !(house.rooms || []).some(r => r.capacity <= f.maxRoom)) return false;
     // Only an explicit "Allowed" counts; "not specified" doesn't.
     if (f.pets && house.rules?.pets !== 'yes') return false;
     if (f.vacantOnly && house.available <= 0) return false;
@@ -1665,8 +1776,8 @@ function openDetails(id) {
     }
 
     document.getElementById('details-card-content').innerHTML = `
-        <h2 style="font-size:38px; color:#222; font-weight:700;">${h.name} ${tierBadgeHtml(h.verificationTier)}</h2>
-        <p style="color:#666; font-size:18px; margin:15px 0;">📍 ${h.location}</p>
+        <h2 style="font-size:38px; color:#222; font-weight:700;">${escapeHtml(h.name)} ${tierBadgeHtml(h.verificationTier)}</h2>
+        <p style="color:#666; font-size:18px; margin:15px 0;">📍 ${escapeHtml(h.location)}</p>
         <p style="font-size:32px; font-weight:bold; color:#333; margin-top:20px;">₱${h.price} <span style="font-size:18px; color:#777; font-weight:normal;">/ month</span></p>`;
 
     // "About the landowner" sits directly above Ratings & Reviews -- reads
@@ -1696,8 +1807,8 @@ function openDetails(id) {
         recSection.style.display = 'none'; scheduleBtn.style.display = 'block'; 
     }
 
-    const aGrid = document.getElementById('details-amenities-grid'); aGrid.innerHTML = '';
-    h.amenities.forEach(a => aGrid.innerHTML += `<div class="amenity-item">${a}</div>`);
+    document.getElementById('details-amenities-grid').innerHTML =
+        h.amenities.map(a => `<div class="amenity-item">${escapeHtml(a)}</div>`).join('');
     renderRulesSection(h);
     document.getElementById('details-contact-btn').onclick = () => openChatForProperty(h);
     
@@ -1718,7 +1829,7 @@ function renderRulesSection(h) {
     document.getElementById('details-rules-section').innerHTML = `
         <h3 style="margin-bottom: 20px; font-size: 22px;">Rooms &amp; House Rules</h3>
         <div class="rules-facts">
-            <div class="rules-fact"><span class="rules-fact-label">Boarders per room</span><span class="rules-fact-value">${h.roomCapacity ? (h.roomCapacity === 1 ? '1 (solo room)' : h.roomCapacity) : notSpecified}</span></div>
+            <div class="rules-fact"><span class="rules-fact-label">Rooms</span><span class="rules-fact-value">${h.rooms && h.rooms.length ? h.rooms.map(r => `<span class="room-type-line">${escapeHtml(describeRoomType(r))}</span>`).join('') : notSpecified}</span></div>
             <div class="rules-fact"><span class="rules-fact-label">Minimum stay</span><span class="rules-fact-value">${text(h.minStay)}</span></div>
             <div class="rules-fact"><span class="rules-fact-label">Curfew</span><span class="rules-fact-value">${text(h.curfew)}</span></div>
         </div>
@@ -1750,7 +1861,7 @@ function initMap(coords, name) {
         mapInitTimer = null;
         map = L.map('details-map', { zoomControl: false, maxBounds: albayBounds, maxBoundsViscosity: 1.0, minZoom: 10 }).setView(coords, 16);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-        L.marker(coords).addTo(map).bindPopup(name).openPopup();
+        L.marker(coords).addTo(map).bindPopup(escapeHtml(name)).openPopup(); // Leaflet popups render HTML -- name is landowner input
         L.circleMarker(currentSchoolCoords, { color: 'red' }).addTo(map).bindPopup("Campus");
 
         const r = getRoute(coords);
@@ -1780,7 +1891,7 @@ function showRecommendations(currentId) {
     recs.sort((a, b) => a.tempDist - b.tempDist);
     if(recs.length === 0) { list.innerHTML = `<p style="color:#666;">No available accommodations nearby.</p>`; return; }
     recs.forEach(r => { 
-        list.innerHTML += `<div class="rec-card" onclick="closeDetails(); setTimeout(() => openDetails(${r.id}), 100);"><strong style="font-size:18px; color:#222;">${r.name}</strong><br><span style="color:#9B72FF; font-weight:bold; font-size:18px;">₱${r.price}</span><br><span style="font-size:13px; color:#666; display:block; margin-top:10px;">🏃 ${r.tempDist}km away</span></div>`; 
+        list.innerHTML += `<div class="rec-card" onclick="closeDetails(); setTimeout(() => openDetails(${r.id}), 100);"><strong style="font-size:18px; color:#222;">${escapeHtml(r.name)}</strong><br><span style="color:#9B72FF; font-weight:bold; font-size:18px;">₱${r.price}</span><br><span style="font-size:13px; color:#666; display:block; margin-top:10px;">🏃 ${r.tempDist}km away</span></div>`; 
     });
 }
 
@@ -1945,7 +2056,7 @@ function readListingExtras(prefix) {
         if (v) rules[r.key] = v; // "Not set" stores nothing, same as an old listing
     });
     return {
-        roomCapacity: parseInt(document.getElementById(prefix + '-room-capacity').value),
+        rooms: readRoomRows(prefix),
         rules,
         otherRules: document.getElementById(prefix + '-other-rules').value.trim(),
         minStay: document.getElementById(prefix + '-min-stay').value.trim(),
@@ -1954,7 +2065,7 @@ function readListingExtras(prefix) {
 }
 
 function fillListingExtras(prefix, h) {
-    document.getElementById(prefix + '-room-capacity').value = h.roomCapacity ?? '';
+    renderRoomRows(prefix, h.rooms);
     HOUSE_RULES.forEach(r => {
         const v = h.rules?.[r.key] || '';
         const radio = document.querySelector(`input[name="${prefix}-rule-${r.key}"][value="${v}"]`);
@@ -1965,10 +2076,110 @@ function fillListingExtras(prefix, h) {
     document.getElementById(prefix + '-curfew').value = h.curfew || '';
 }
 
-// Boarders sharing one room can't exceed the whole house's capacity.
-function roomCapacityError(roomCapacity, total) {
-    if (!Number.isInteger(roomCapacity) || roomCapacity < 1) return 'Please enter how many boarders share one room (at least 1).';
-    if (Number.isInteger(total) && roomCapacity > total) return `Boarders per room (${roomCapacity}) can't be more than the total capacity (${total}).`;
+/* ---- Room-type rows (listing form) ----
+   "[count] rooms for [capacity] people", one row per room type, at least
+   one row. Read raw (parseInt, may be NaN) so roomsError() can say what's
+   wrong; normalizeRooms() runs only on valid input, at save time.
+   Shared types (capacity >= 2) also get an optional "[n] spaces still
+   open" field (see openSlotsText); updateRoomsSummary() shows/hides it. */
+function roomRowHtml(count, capacity, openSlots) {
+    return `<div class="room-row">
+        <input type="number" class="room-count" min="1" value="${escapeHtml(count ?? '')}" aria-label="Number of rooms" oninput="updateRoomsSummary(this)">
+        <span class="room-word">rooms for</span>
+        <input type="number" class="room-capacity" min="1" max="${MAX_ROOM_CAPACITY}" value="${escapeHtml(capacity ?? '')}" aria-label="People per room" oninput="updateRoomsSummary(this)">
+        <span class="room-people">people</span>
+        <button type="button" class="room-remove" onclick="removeRoomRow(this)" aria-label="Remove this room type">✕</button>
+        <span class="room-open">
+            <span class="room-open-sep" aria-hidden="true">·</span>
+            <input type="number" class="room-open-count" min="0" value="${escapeHtml(openSlots ?? '')}" aria-label="Spaces still open (optional)" oninput="updateRoomsSummary(this)">
+            <span class="room-open-word">spaces still open</span>
+        </span>
+    </div>`;
+}
+
+function renderRoomRows(prefix, rooms) {
+    const list = document.getElementById(prefix + '-room-rows');
+    const rows = (rooms && rooms.length) ? rooms : [{ count: '', capacity: '' }];
+    list.innerHTML = rows.map(r => roomRowHtml(r.count, r.capacity, r.openSlots)).join('');
+    updateRoomsSummary(list);
+}
+
+function addRoomRow(prefix) {
+    const list = document.getElementById(prefix + '-room-rows');
+    list.insertAdjacentHTML('beforeend', roomRowHtml('', ''));
+    updateRoomsSummary(list);
+    list.lastElementChild.querySelector('.room-count').focus();
+}
+
+function removeRoomRow(btn) {
+    const list = btn.closest('.room-rows');
+    if (list.children.length > 1) btn.closest('.room-row').remove();
+    updateRoomsSummary(list);
+}
+
+// openSlots: undefined when blank ("not stated") or when the type is a
+// solo room (its field is hidden and ignored); otherwise parseInt, so a
+// bad value reaches roomsError() as NaN rather than being dropped.
+function readRoomRows(prefix) {
+    return [...document.querySelectorAll(`#${prefix}-room-rows .room-row`)].map(row => {
+        const capacity = parseInt(row.querySelector('.room-capacity').value);
+        const openRaw = row.querySelector('.room-open-count').value.trim();
+        return {
+            count: parseInt(row.querySelector('.room-count').value),
+            capacity,
+            openSlots: (capacity >= 2 && openRaw !== '') ? Number(openRaw) : undefined
+        };
+    });
+}
+
+// Re-labels each row ("1 room for 1 person" / "3 rooms for 2 people"),
+// disables the remove button on the last row, and refreshes the
+// "5 rooms, 8 boarders" line -- red when the room types add up to more
+// than Total rooms. `el` is anything inside the form (a row input, the
+// row list, or the Total rooms input), so one handler serves every caller.
+function updateRoomsSummary(el) {
+    const prefix = (el.closest('form').id === 'edit-listing-form') ? 'edit' : 'add';
+    const list = document.getElementById(prefix + '-room-rows');
+    list.querySelectorAll('.room-row').forEach(row => {
+        const count = parseInt(row.querySelector('.room-count').value);
+        const cap = parseInt(row.querySelector('.room-capacity').value);
+        row.querySelector('.room-word').innerText = count === 1 ? 'room for' : 'rooms for';
+        row.querySelector('.room-people').innerText = cap === 1 ? 'person' : 'people';
+        // Open spaces only for shared rooms -- a solo room is vacant or not,
+        // and `available` already says that.
+        row.querySelector('.room-open').hidden = !(cap >= 2);
+        const open = parseInt(row.querySelector('.room-open-count').value);
+        row.querySelector('.room-open-word').innerText = open === 1 ? 'space still open' : 'spaces still open';
+    });
+    const onlyOne = list.children.length <= 1;
+    list.querySelectorAll('.room-remove').forEach(b => { b.disabled = onlyOne; });
+
+    const valid = readRoomRows(prefix).filter(r => r.count >= 1 && r.capacity >= 1);
+    const t = roomTotals(valid);
+    const total = parseInt(document.getElementById(prefix + '-total').value);
+    const summary = document.getElementById(prefix + '-rooms-summary');
+    summary.innerText = `${t.rooms} room${t.rooms === 1 ? '' : 's'}, ${t.boarders} boarder${t.boarders === 1 ? '' : 's'}` +
+        (Number.isInteger(total) ? ` · Total rooms: ${total}` : '');
+    summary.classList.toggle('rooms-summary-over', Number.isInteger(total) && t.rooms > total);
+}
+
+// Room types must be complete whole numbers and can't add up to more
+// rooms than the listing's Total rooms. Returns a message, or null.
+function roomsError(rows, total) {
+    if (!rows.length) return 'Add at least one room type.';
+    for (const r of rows) {
+        if (!Number.isInteger(r.count) || r.count < 1) return 'Each room type needs a number of rooms (at least 1).';
+        if (!Number.isInteger(r.capacity) || r.capacity < 1 || r.capacity > MAX_ROOM_CAPACITY)
+            return `Each room type needs how many people share one room (1 to ${MAX_ROOM_CAPACITY}).`;
+        if (r.openSlots !== undefined) { // stated -- blank is allowed and means "not stated"
+            if (!Number.isInteger(r.openSlots) || r.openSlots < 0) return 'Spaces still open must be a whole number (0 or more), or left blank.';
+            const beds = r.capacity * r.count;
+            if (r.openSlots > beds)
+                return `${r.count} room${r.count === 1 ? '' : 's'} for ${r.capacity} hold${r.count === 1 ? 's' : ''} at most ${beds} people, so spaces still open can't be ${r.openSlots}.`;
+        }
+    }
+    const sum = rows.reduce((n, r) => n + r.count, 0);
+    if (Number.isInteger(total) && sum > total) return `Your room types add up to ${sum} rooms, but Total rooms is ${total}.`;
     return null;
 }
 
@@ -2014,8 +2225,9 @@ function saveNewListing(e) {
     const lng = document.getElementById('add-lng').value;
     if(!lat || !lng || isNaN(lat) || isNaN(lng)) return alert("Please mark location on map.");
     const extras = readListingExtras('add');
-    const roomError = roomCapacityError(extras.roomCapacity, parseInt(document.getElementById('add-total').value));
+    const roomError = roomsError(extras.rooms, parseInt(document.getElementById('add-total').value));
     if (roomError) return alert(roomError);
+    extras.rooms = normalizeRooms(extras.rooms);
 
     const saveBtn = document.getElementById('save-property-btn');
     saveBtn.innerText = "Saving & Compressing Photos...";
@@ -2045,7 +2257,7 @@ function saveNewListing(e) {
             streetPhotos: photosArray,
             ...extras
         });
-        saveData(['houses']); renderAll(); closeAddListing(); document.getElementById('listing-form').reset();
+        saveData(['houses']); renderAll(); closeAddListing(); document.getElementById('listing-form').reset(); renderRoomRows('add');
         if(selectionMarker) { addMap.removeLayer(selectionMarker); selectionMarker = null; }
         saveBtn.innerText = "Save Property"; saveBtn.disabled = false;
     };
@@ -2134,8 +2346,9 @@ function saveEditListing(e) {
     const lng = document.getElementById('edit-lng').value;
     if(!lat || !lng || isNaN(lat) || isNaN(lng)) return alert("Please mark location on map.");
     const extras = readListingExtras('edit');
-    const roomError = roomCapacityError(extras.roomCapacity, parseInt(document.getElementById('edit-total').value));
+    const roomError = roomsError(extras.rooms, parseInt(document.getElementById('edit-total').value));
     if (roomError) return alert(roomError);
+    extras.rooms = normalizeRooms(extras.rooms);
 
     const updateBtn = document.getElementById('update-property-btn');
     updateBtn.innerText = "Updating...";
@@ -2159,6 +2372,7 @@ function saveEditListing(e) {
     h.available = parseInt(document.getElementById('edit-available').value);
     h.coords = [parseFloat(lat), parseFloat(lng)];
     Object.assign(h, extras);
+    delete h.roomCapacity; // retired field -- rooms replaces it
 
     const amenities = [];
     document.querySelectorAll('#edit-listing-modal .amenities-toggle-grid input:checked').forEach(c => amenities.push(c.value));
@@ -2883,5 +3097,6 @@ window.addEventListener('storage', (e) => {
 populateSchoolDropdown();
 renderRulesFieldset('add');
 renderRulesFieldset('edit');
+renderRoomRows('add');
 restoreSession();
 openPropertyFromQueryParam();

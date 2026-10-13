@@ -233,7 +233,7 @@ function boot() {
 
     map = L.map(mapContainer, { maxBounds: ALBAY_BOUNDS, maxBoundsViscosity: 1.0, minZoom: 10 }).setView(house.coords, 15);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-    L.marker(house.coords).addTo(map).bindPopup(house.name);
+    L.marker(house.coords).addTo(map).bindPopup(escapeHtml(house.name)); // popups render HTML; name is landowner input
 
     // On mobile, .directions-map's height comes from a vh unit, and some
     // mobile browsers don't settle vh to its final value until just after

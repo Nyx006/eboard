@@ -215,9 +215,9 @@ const DEMO_LISTING_EXTRAS = {
 };
 
 const defaultHouses = [
-    { id: 1, name: "Rawis Boarding house", owner: "Mr. Lopez", price: 5500, available: 0, total: 5, location: "Purok 6, Rawis", coords: [13.164500, 123.751000], verificationTier: 'FULLY_VERIFIED', amenities: ["🛏️ Bed", "📶 WiFi", "⚡ Electricity"], streetPhotos: [placeholderExterior], ...DEMO_LISTING_EXTRAS[1] },
-    { id: 2, name: "Legazpi Student Hub", owner: "Mrs. Santos", price: 6000, available: 1, total: 3, location: "Rawis Main St.", coords: [13.163000, 123.752000], verificationTier: 'ID_VERIFIED', amenities: ["🍳 Kitchen", "📷 CCTV", "❄️ Aircon"], streetPhotos: [placeholderExterior], ...DEMO_LISTING_EXTRAS[2] },
-    { id: 3, name: "Purok 6 Annex", owner: "Mr. Briz", price: 4500, available: 3, total: 10, location: "Purok 6, Rawis", coords: [13.165000, 123.750500], verificationTier: 'UNVERIFIED', amenities: ["💧 Water", "📷 CCTV", "⚡ Electricity"], streetPhotos: [placeholderExterior], ...DEMO_LISTING_EXTRAS[3] }
+    { id: 1, name: "Rawis Boarding house", owner: "Mr. Lopez", price: 5500, available: 0, total: 5, location: "Purok 6, Rawis", coords: [13.164005, 123.750120], verificationTier: 'FULLY_VERIFIED', amenities: ["🛏️ Bed", "📶 WiFi", "⚡ Electricity"], streetPhotos: [placeholderExterior], ...DEMO_LISTING_EXTRAS[1] },
+    { id: 2, name: "Legazpi Student Hub", owner: "Mrs. Santos", price: 6000, available: 1, total: 3, location: "Rawis Main St.", coords: [13.163495, 123.752880], verificationTier: 'ID_VERIFIED', amenities: ["🍳 Kitchen", "📷 CCTV", "❄️ Aircon"], streetPhotos: [placeholderExterior], ...DEMO_LISTING_EXTRAS[2] },
+    { id: 3, name: "Purok 6 Annex", owner: "Mr. Briz", price: 4500, available: 3, total: 10, location: "Purok 6, Rawis", coords: [13.165000, 123.749484], verificationTier: 'UNVERIFIED', amenities: ["💧 Water", "📷 CCTV", "⚡ Electricity"], streetPhotos: [placeholderExterior], ...DEMO_LISTING_EXTRAS[3] }
 ];
 
 /* One seeded thread between the app's one real student and one real
@@ -350,6 +350,28 @@ houses.forEach(h => {
     if (!extras || h.owner !== DEMO_OWNERS[h.id]) return;
     for (const [field, value] of Object.entries(extras)) {
         if (h[field] === undefined) h[field] = value;
+    }
+});
+
+/* Migration (privacy, 2026-10-14): the three demo pins originally sat
+   on real boarding houses in Purok 6, Rawis -- one of them a
+   researcher's residence -- while carrying invented prices, rules and
+   owners, and two carried a verification badge nobody earned. They
+   were moved 110 m, to points 4-8 m from a road (chosen with
+   EBoardRouter.nearestNodeDistance()); defaultHouses above holds the
+   new values. This moves the same three in browsers that saved them
+   before, matched on id + original owner + the OLD coordinates within
+   ~1 m (1e-5 degrees, so a value that round-tripped through JSON still
+   matches). Once moved, the old coordinates no longer match, so it
+   never fires again; a pin someone moved elsewhere is left alone. */
+const DEMO_OLD_COORDS = { 1: [13.164500, 123.751000], 2: [13.163000, 123.752000], 3: [13.165000, 123.750500] };
+const DEMO_NEW_COORDS = { 1: [13.164005, 123.750120], 2: [13.163495, 123.752880], 3: [13.165000, 123.749484] };
+const nearlyEqual = (a, b) => Math.abs(Number(a) - Number(b)) < 1e-5;
+houses.forEach(h => {
+    const oldPin = DEMO_OLD_COORDS[h.id];
+    if (!oldPin || h.owner !== DEMO_OWNERS[h.id] || !Array.isArray(h.coords)) return;
+    if (nearlyEqual(h.coords[0], oldPin[0]) && nearlyEqual(h.coords[1], oldPin[1])) {
+        h.coords = [...DEMO_NEW_COORDS[h.id]];
     }
 });
 

@@ -359,19 +359,23 @@ houses.forEach(h => {
    owners, and two carried a verification badge nobody earned. They
    were moved 110 m, to points 4-8 m from a road (chosen with
    EBoardRouter.nearestNodeDistance()); defaultHouses above holds the
-   new values. This moves the same three in browsers that saved them
-   before, matched on id + original owner + the OLD coordinates within
-   ~1 m (1e-5 degrees, so a value that round-tripped through JSON still
-   matches). Once moved, the old coordinates no longer match, so it
-   never fires again; a pin someone moved elsewhere is left alone. */
-const DEMO_OLD_COORDS = { 1: [13.164500, 123.751000], 2: [13.163000, 123.752000], 3: [13.165000, 123.750500] };
+   new values, repeated here for browsers that saved the old ones.
+
+   Deliberately does NOT list the old coordinates: this file is public,
+   and naming them here would republish exactly what the move removes.
+   It doesn't need to -- no account can edit these three listings
+   (their owners are flavor-text names; landowners only edit their own,
+   and the admin console doesn't edit coordinates), so any demo pin not
+   already at its new spot is an old one. Matched on id + original
+   owner; within ~1 m (1e-5 degrees) counts as already moved, so a value
+   that round-tripped through JSON doesn't re-trigger it. Fires once. */
 const DEMO_NEW_COORDS = { 1: [13.164005, 123.750120], 2: [13.163495, 123.752880], 3: [13.165000, 123.749484] };
 const nearlyEqual = (a, b) => Math.abs(Number(a) - Number(b)) < 1e-5;
 houses.forEach(h => {
-    const oldPin = DEMO_OLD_COORDS[h.id];
-    if (!oldPin || h.owner !== DEMO_OWNERS[h.id] || !Array.isArray(h.coords)) return;
-    if (nearlyEqual(h.coords[0], oldPin[0]) && nearlyEqual(h.coords[1], oldPin[1])) {
-        h.coords = [...DEMO_NEW_COORDS[h.id]];
+    const newPin = DEMO_NEW_COORDS[h.id];
+    if (!newPin || h.owner !== DEMO_OWNERS[h.id] || !Array.isArray(h.coords)) return;
+    if (!(nearlyEqual(h.coords[0], newPin[0]) && nearlyEqual(h.coords[1], newPin[1]))) {
+        h.coords = [...newPin];
     }
 });
 

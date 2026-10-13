@@ -186,10 +186,38 @@ function getPathDist(lat1, lon1, lat2, lon2) {
     return getRoute([lat2, lon2]).km.toFixed(2);
 }
 
+/* House rules a landowner marks Allowed ('yes') / Not allowed ('no') /
+   not specified (key absent) on a listing's `rules` object. One list
+   drives the add/edit form (renderRulesFieldset), the details page
+   (renderRulesSection) and the student filters (passesFilters), so the
+   three can't drift apart. Structured rather than free text because the
+   panel asked for a "pets allowed" filter, which free text can't drive;
+   anything not covered here goes in the listing's free-text otherRules. */
+const HOUSE_RULES = [
+    { key: 'pets',            label: 'Pets',             icon: '🐾' },
+    { key: 'smoking',         label: 'Smoking',          icon: '🚬' },
+    { key: 'cooking',         label: 'Cooking',          icon: '🍳' },
+    { key: 'visitors',        label: 'Visitors',         icon: '👥' },
+    { key: 'alcohol',         label: 'Alcohol',          icon: '🍺' },
+    { key: 'overnightGuests', label: 'Overnight guests', icon: '🌙' }
+];
+
+/* roomCapacity, rules, otherRules, minStay and curfew were added for the
+   panel's listing-form feedback -- see DEMO_LISTING_EXTRAS below for the
+   backfill onto browsers that saved these three before the fields existed. */
+const DEMO_LISTING_EXTRAS = {
+    1: { roomCapacity: 2, rules: { pets: 'no', smoking: 'no', cooking: 'yes', visitors: 'yes', alcohol: 'no', overnightGuests: 'no' },
+         otherRules: 'Lights out at 11 PM. Visitors stay in the receiving area.', minStay: '1 semester', curfew: '10:00 PM' },
+    2: { roomCapacity: 1, rules: { pets: 'yes', smoking: 'no', cooking: 'yes', visitors: 'yes', overnightGuests: 'no' },
+         otherRules: 'Small pets only (cats, small dogs). Owner must clean up after them.', minStay: '1 month', curfew: 'None' },
+    3: { roomCapacity: 4, rules: { smoking: 'no', cooking: 'no', visitors: 'no', alcohol: 'no' },
+         otherRules: '', minStay: '1 school year', curfew: '9:00 PM' }
+};
+
 const defaultHouses = [
-    { id: 1, name: "Rawis Boarding house", owner: "Mr. Lopez", price: 5500, available: 0, total: 5, location: "Purok 6, Rawis", coords: [13.164500, 123.751000], verificationTier: 'FULLY_VERIFIED', amenities: ["🛏️ Bed", "📶 WiFi", "⚡ Electricity"], streetPhotos: [placeholderExterior] },
-    { id: 2, name: "Legazpi Student Hub", owner: "Mrs. Santos", price: 6000, available: 1, total: 3, location: "Rawis Main St.", coords: [13.163000, 123.752000], verificationTier: 'ID_VERIFIED', amenities: ["🍳 Kitchen", "📷 CCTV", "❄️ Aircon"], streetPhotos: [placeholderExterior] },
-    { id: 3, name: "Purok 6 Annex", owner: "Mr. Briz", price: 4500, available: 3, total: 10, location: "Purok 6, Rawis", coords: [13.165000, 123.750500], verificationTier: 'UNVERIFIED', amenities: ["💧 Water", "📷 CCTV", "⚡ Electricity"], streetPhotos: [placeholderExterior] }
+    { id: 1, name: "Rawis Boarding house", owner: "Mr. Lopez", price: 5500, available: 0, total: 5, location: "Purok 6, Rawis", coords: [13.164500, 123.751000], verificationTier: 'FULLY_VERIFIED', amenities: ["🛏️ Bed", "📶 WiFi", "⚡ Electricity"], streetPhotos: [placeholderExterior], ...DEMO_LISTING_EXTRAS[1] },
+    { id: 2, name: "Legazpi Student Hub", owner: "Mrs. Santos", price: 6000, available: 1, total: 3, location: "Rawis Main St.", coords: [13.163000, 123.752000], verificationTier: 'ID_VERIFIED', amenities: ["🍳 Kitchen", "📷 CCTV", "❄️ Aircon"], streetPhotos: [placeholderExterior], ...DEMO_LISTING_EXTRAS[2] },
+    { id: 3, name: "Purok 6 Annex", owner: "Mr. Briz", price: 4500, available: 3, total: 10, location: "Purok 6, Rawis", coords: [13.165000, 123.750500], verificationTier: 'UNVERIFIED', amenities: ["💧 Water", "📷 CCTV", "⚡ Electricity"], streetPhotos: [placeholderExterior], ...DEMO_LISTING_EXTRAS[3] }
 ];
 
 /* One seeded thread between the app's one real student and one real
@@ -310,15 +338,38 @@ if (!['UNVERIFIED', 'DOCUMENTS_SUBMITTED', 'ID_VERIFIED', 'SITE_VISITED', 'FULLY
    permanently blank for anyone who saved data before this feature. */
 if (!landownerProfile.memberSince) landownerProfile.memberSince = LANDOWNER_MEMBER_SINCE;
 
+/* Migration: the three demo listings saved by a browser before
+   roomCapacity/rules/otherRules/minStay/curfew existed get those fields
+   from DEMO_LISTING_EXTRAS. Matched on id AND original owner so a
+   listing that merely reuses id 1-3 isn't touched, and each field is
+   filled only where absent -- a value a landowner set is never
+   overwritten. */
+const DEMO_OWNERS = { 1: 'Mr. Lopez', 2: 'Mrs. Santos', 3: 'Mr. Briz' };
+houses.forEach(h => {
+    const extras = DEMO_LISTING_EXTRAS[h.id];
+    if (!extras || h.owner !== DEMO_OWNERS[h.id]) return;
+    for (const [field, value] of Object.entries(extras)) {
+        if (h[field] === undefined) h[field] = value;
+    }
+});
+
 /* On a brand-new session nothing has been saved yet — the demo data
    above lives only in memory until some mutation calls saveData().
    Standalone pages that read this data straight from localStorage
    (admin.js, directions.js) need it to already be there, so persist
    the bootstrap state once up front instead of waiting for the first
-   edit. Harmless to repeat on every load — it just re-saves the same
-   in-memory state that was either just loaded from localStorage or
-   just defaulted. */
-saveData();
+   edit.
+
+   Every key is passed as mutated, so the in-memory state is what gets
+   written. BUG (fixed 2026-10-13): this used to be saveData() with no
+   argument, which RELOADS every key from localStorage right before
+   writing it -- silently discarding every migration above (owner-name
+   suffix, SITE_VERIFIED swap, memberSince, the demo-listing backfill),
+   since they only ever existed in memory. A fresh visitor never noticed
+   (nothing saved yet to reload), which is why it went unseen. */
+saveData(['houses', 'conversations', 'landownerProfile', 'reviews', 'auditLogs',
+          'verificationDocs', 'siteVerifications', 'reviewReports',
+          'studentVerificationDocs', 'studentProfile']);
 
 let currentSchoolCoords = SCHOOLS[0].coords;
 let currentSchoolName = SCHOOLS[0].name;
@@ -364,13 +415,13 @@ function reloadStudentProfile() { studentProfile = JSON.parse(localStorage.getIt
    memory. Every key NOT named is reloaded fresh from localStorage right
    before being written back, so a save triggered by one action can't
    stomp a different key another tab (admin.html alongside index.html,
-   most commonly) changed in the meantime. Called with no argument --
-   the one-time bootstrap save right after this file's migrations run,
-   see below -- every key reloads, which is a safe no-op: on a normal
-   load that's re-reading exactly what was just parsed, and on a fresh
-   profile with nothing saved yet, JSON.parse(null) is null and the `||`
-   falls back to keeping the in-memory default, so the very first save
-   still seeds it correctly. */
+   most commonly) changed in the meantime. With no argument every key
+   reloads -- NOT a safe no-op after an in-memory change, since the
+   change is discarded by the reload. The one-time bootstrap save after
+   this file's migrations used to call it that way and silently undid
+   every migration; it now names every key instead (see its comment
+   above). On a fresh profile with nothing saved yet, JSON.parse(null)
+   is null and the `||` keeps the in-memory default either way. */
 function saveData(mutated = []) {
     const keep = new Set(mutated);
     if (!keep.has('houses'))                  reloadHouses();
@@ -407,7 +458,76 @@ function hideAllViews() {
     document.getElementById('messages-view').style.display = 'none';
 }
 
-function selectRole(r) { selectedRole = r; document.getElementById('portal-selection').style.display = 'none'; document.getElementById('auth-screen').style.display = 'flex'; updateAuthUI(); }
+function selectRole(r) { selectedRole = r; pendingAction = null; setAuthReason(''); document.getElementById('portal-selection').style.display = 'none'; document.getElementById('auth-screen').style.display = 'flex'; updateAuthUI(); }
+
+/* ---- GUEST BROWSING ----
+   Panel feedback: a student should be able to look around -- listings,
+   campus, filters, details, routes, Street View -- without registering.
+   A guest is selectedRole 'student' with currentUser null; most code
+   already guards on currentUser?.…, and directions.html never reads the
+   session at all. Reviewing, messaging and scheduling a visit still need
+   an account: requireAccount() sends a guest to sign in, then
+   resumePendingAction() carries on with what they tapped. */
+let pendingAction = null; // { action: 'review' | 'chat' | 'schedule', propertyId }
+
+function isGuest() { return selectedRole === 'student' && !currentUser; }
+
+function enterAsGuest() {
+    selectedRole = 'student';
+    currentUser = null;
+    pendingAction = null;
+    setAuthReason('');
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify({ guest: true }));
+    enterApp();
+    loadRoadNetwork();
+}
+
+function setAuthReason(text) {
+    const el = document.getElementById('auth-reason');
+    el.innerText = text;
+    el.style.display = text ? 'block' : 'none';
+}
+
+// The student sign-in screen, reached from inside the app (a gated
+// action, or a guest's header "Sign in" button) rather than the portal.
+function showStudentSignIn(reason) {
+    closeAllOverlays();
+    selectedRole = 'student';
+    isRegistrationMode = false;
+    setAuthReason(reason || '');
+    document.getElementById('main-app').style.display = 'none';
+    document.getElementById('auth-screen').style.display = 'flex';
+    updateAuthUI();
+    window.scrollTo(0, 0);
+}
+
+const ACCOUNT_REASONS = {
+    review:   'Sign in to write a review. You can keep browsing without an account.',
+    chat:     'Sign in to message the owner. You can keep browsing without an account.',
+    schedule: 'Sign in to schedule a visit. You can keep browsing without an account.'
+};
+
+// True when there's a signed-in user. Otherwise remembers what the guest
+// was trying to do, sends them to sign in, and returns false.
+function requireAccount(action) {
+    if (currentUser) return true;
+    pendingAction = { action, propertyId: currentPropertyId };
+    showStudentSignIn(ACCOUNT_REASONS[action]);
+    return false;
+}
+
+// After a guest signs in from a gated action: back to that listing, and
+// straight into the review / chat / schedule they originally tapped.
+function resumePendingAction() {
+    const p = pendingAction;
+    pendingAction = null;
+    if (!p || !houses.some(h => h.id === p.propertyId)) return;
+    openDetails(p.propertyId);
+    const h = houses.find(x => x.id === p.propertyId);
+    if (p.action === 'review' && !hasAlreadyReviewed(p.propertyId)) openReviewModal();
+    else if (p.action === 'chat') openChatForProperty(h);
+    else if (p.action === 'schedule' && h.available > 0) openScheduleModal();
+}
 function toggleAuthMode() { isRegistrationMode = !isRegistrationMode; updateAuthUI(); }
 function updateAuthUI() {
     const t = document.getElementById('auth-title'), b = document.getElementById('auth-btn'), m = document.getElementById('auth-msg'), tl = document.querySelector('.auth-toggle-text a'), rf = document.getElementById('reg-fields'), cp = document.getElementById('reg-confirm-pass');
@@ -433,6 +553,8 @@ function updateAuthUI() {
         rfStudent.style.display = 'none';
         rfLandowner.style.display = 'none';
     }
+    // Guest browsing is a student-portal option only.
+    document.getElementById('guest-entry').style.display = selectedRole === 'student' ? 'block' : 'none';
 }
 function handleAuth() {
     const identity = ROLE_IDENTITY[selectedRole];
@@ -473,11 +595,13 @@ function handleAuth() {
         role: currentUser.role, name: currentUser.name, id: currentUser.id
     }));
 
+    setAuthReason('');
     enterApp();
     // Campus routing is a student concept only — a landowner managing
     // listings has no use for it, so don't fetch ~24,045 nodes on their
     // dashboard. Mirrored in restoreSession() below; keep both in sync.
     if (selectedRole === 'student') loadRoadNetwork();
+    if (selectedRole === 'student') resumePendingAction();
 }
 
 /* Shared by a fresh sign-in (handleAuth) and a restored session
@@ -488,10 +612,18 @@ function enterApp() {
     document.getElementById('portal-selection').style.display = 'none';
     document.getElementById('auth-screen').style.display = 'none';
     document.getElementById('main-app').style.display = 'block';
-    document.querySelector('.user-name').innerText = currentUser.name;
-    document.getElementById('display-user-role').innerText = ROLE_IDENTITY[selectedRole].label;
+    const guest = isGuest();
+    document.querySelector('.user-name').innerText = guest ? 'Guest' : currentUser.name;
+    document.getElementById('display-user-role').innerText = guest ? 'NOT SIGNED IN' : ROLE_IDENTITY[selectedRole].label;
 
     document.getElementById('nav-messages').style.display = 'inline';
+    // A class, not style.display: style.css forces these two to
+    // inline-flex !important on mobile (see .guest-hidden there).
+    document.getElementById('nav-messages').classList.toggle('guest-hidden', guest);
+    document.getElementById('nav-myprofile').classList.toggle('guest-hidden', guest);
+    const authBtn = document.getElementById('header-auth-btn');
+    authBtn.innerText = guest ? 'Sign in' : 'Logout';
+    authBtn.onclick = guest ? () => showStudentSignIn('') : logout;
     updateMessageBadge();
 
     goHome();
@@ -506,8 +638,13 @@ function restoreSession() {
     const saved = JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null');
     if (!saved) return;
 
-    currentUser = { id: saved.id, name: saved.name, role: saved.role };
-    selectedRole = saved.role;
+    if (saved.guest) {
+        currentUser = null;
+        selectedRole = 'student';
+    } else {
+        currentUser = { id: saved.id, name: saved.name, role: saved.role };
+        selectedRole = saved.role;
+    }
 
     const savedSchoolIdx = sessionStorage.getItem(SCHOOL_SESSION_KEY);
     if (savedSchoolIdx !== null && SCHOOLS[savedSchoolIdx]) {
@@ -582,7 +719,7 @@ function loadRoadNetwork() {
             setTimeout(() => banner.remove(), 5000);
         });
 }
-function backToPortal() { document.getElementById('auth-screen').style.display = 'none'; document.getElementById('portal-selection').style.display = 'flex'; }
+function backToPortal() { pendingAction = null; setAuthReason(''); document.getElementById('auth-screen').style.display = 'none'; document.getElementById('portal-selection').style.display = 'flex'; }
 function logout() {
     sessionStorage.removeItem(SESSION_KEY);
     sessionStorage.removeItem(SCHOOL_SESSION_KEY); // don't leak the last user's campus choice to the next sign-in
@@ -626,7 +763,7 @@ function closeAllOverlays() {
 function goHome() {
     closeAllOverlays();
     hideAllViews();
-    if (map) { map.remove(); map = null; }
+    destroyDetailsMap();
     if (selectedRole === 'student')        document.getElementById('student-view').style.display = 'block';
     else                                   document.getElementById('landowner-view').style.display = 'block';
 }
@@ -1010,7 +1147,7 @@ function renderStudentVerificationSection() {
 }
 
 // ---- SCHEDULE VISIT LOGIC ----
-function openScheduleModal() { document.getElementById('schedule-modal').style.display = 'block'; }
+function openScheduleModal() { if (!requireAccount('schedule')) return; document.getElementById('schedule-modal').style.display = 'block'; }
 function closeScheduleModal() { document.getElementById('schedule-modal').style.display = 'none'; }
 function submitSchedule(e) {
     e.preventDefault();
@@ -1046,7 +1183,7 @@ function updateMessageBadge() {
 function openInbox() {
     hideAllViews();
     currentPropertyContext = null;
-    if (map) { map.remove(); map = null; }
+    destroyDetailsMap();
     document.getElementById('messages-view').style.display = 'block';
     document.getElementById('inbox-title').innerText = selectedRole === 'landowner' ? "Student Inquiries" : "Messages";
     renderInbox();
@@ -1227,6 +1364,7 @@ function renderChatHistory(convId) {
    thread per (student, landowner) covering every property they've ever
    discussed -- that's the whole point of this change. */
 function openChatForProperty(h) {
+    if (!requireAccount('chat')) return;
     reloadConversations();
     let conv = conversations.find(c =>
         c.studentId === currentUser.id && c.landownerId === ROLE_IDENTITY.landowner.id && c.propertyId === h.id);
@@ -1315,6 +1453,8 @@ function renderAll() {
     // Read once per render, not once per card — the dropdown doesn't
     // change mid-loop, and every card links to the same origin campus.
     const schoolIdx = document.getElementById('school-select').selectedIndex;
+    const filters = readFilters();
+    let approvedCount = 0, shownCount = 0;
 
     houses.forEach(h => {
         const dist = h.tempDist.toFixed(2);
@@ -1323,9 +1463,10 @@ function renderAll() {
         const coverImage = (h.streetPhotos && h.streetPhotos.length > 0) ? h.streetPhotos[0] : placeholderExterior;
         const fullOverlay = isFull ? `<div class="full-overlay">Fully Booked</div>` : '';
         
-        const matchesQuery = h.name.toLowerCase().includes(query) || h.location.toLowerCase().includes(query);
-        // Students only ever see listings an administrator has approved.
-        if (matchesQuery && h.status === 'approved') {
+        if (h.status === 'approved') approvedCount++;
+        // Approved-only, search text, and the student filters -- see passesFilters().
+        if (passesFilters(h, query, filters)) {
+            shownCount++;
             const stats = getRatingStats(h.id);
             const ratingRow = stats.count > 0
                 ? `<p class="card-rating">${renderStars(stats.avg)}
@@ -1379,6 +1520,70 @@ function renderAll() {
     });
     document.getElementById('stat-total').innerText = houses.length;
     document.getElementById('stat-active').innerText = houses.filter(h => h.available > 0).length;
+    updateFilterSummary(filters, shownCount, approvedCount);
+    if (shownCount === 0 && approvedCount > 0) {
+        grid.innerHTML = `<div class="grid-empty">
+            <p>No listings match your search and filters.</p>
+            <button type="button" class="filter-clear" onclick="clearFilters(true)">Clear search and filters</button>
+        </div>`;
+    }
+}
+
+/* ---- STUDENT FILTERS ----
+   Price and distance filtering existed before a script.js rewrite
+   dropped them (recovered from the pre-git backup); pets and boarders
+   per room were added for the panel's feedback, using the new listing
+   fields. Minimum stay and curfew are free text, so they're shown on
+   the details page but deliberately not filterable. Only the student
+   grid is filtered -- not the landowner dashboard, which renderAll()
+   also builds, and not showRecommendations(). */
+function readFilters() {
+    const val = id => document.getElementById(id);
+    return {
+        maxPrice: parseInt(val('filter-price')?.value || 0),
+        maxDist: parseFloat(val('filter-dist')?.value || 0),
+        maxRoom: parseInt(val('filter-room')?.value || 0),
+        pets: !!val('filter-pets')?.checked,
+        vacantOnly: !!val('filter-vacant')?.checked
+    };
+}
+
+function passesFilters(house, query, f) {
+    if (house.status !== 'approved') return false; // students only ever see approved listings
+    if (query && !(house.name.toLowerCase().includes(query) ||
+                   house.location.toLowerCase().includes(query))) return false;
+    if (f.maxPrice > 0 && house.price > f.maxPrice) return false;
+    if (f.maxDist > 0 && house.tempDist > f.maxDist) return false; // road distance once the graph loads
+    // A listing that hasn't said how many share a room can't promise "solo" or "up to 2".
+    if (f.maxRoom > 0 && !(house.roomCapacity > 0 && house.roomCapacity <= f.maxRoom)) return false;
+    // Only an explicit "Allowed" counts; "not specified" doesn't.
+    if (f.pets && house.rules?.pets !== 'yes') return false;
+    if (f.vacantOnly && house.available <= 0) return false;
+    return true;
+}
+
+function activeFilterCount(f) {
+    return [f.maxPrice > 0, f.maxDist > 0, f.maxRoom > 0, f.pets, f.vacantOnly].filter(Boolean).length;
+}
+
+function updateFilterSummary(f, shown, total) {
+    const n = activeFilterCount(f);
+    const countEl = document.getElementById('filter-count');
+    if (countEl) countEl.innerText = n ? `· ${n} active` : '';
+    const resultEl = document.getElementById('result-count');
+    if (!resultEl) return;
+    resultEl.innerText = shown === total
+        ? `${total} listing${total === 1 ? '' : 's'}`
+        : `${shown} of ${total} listings match your search and filters`;
+}
+
+// The panel's button clears just the filters; the empty-state button
+// also clears the search text, since either can be what hid everything.
+function clearFilters(alsoSearch = false) {
+    ['filter-price', 'filter-dist', 'filter-room'].forEach(id => { document.getElementById(id).value = '0'; });
+    ['filter-pets', 'filter-vacant'].forEach(id => { document.getElementById(id).checked = false; });
+    if (alsoSearch) document.getElementById('search-input').value = '';
+    renderAll();
 }
 
 function deleteListing(id) {
@@ -1467,14 +1672,56 @@ function openDetails(id) {
 
     const aGrid = document.getElementById('details-amenities-grid'); aGrid.innerHTML = '';
     h.amenities.forEach(a => aGrid.innerHTML += `<div class="amenity-item">${a}</div>`);
+    renderRulesSection(h);
     document.getElementById('details-contact-btn').onclick = () => openChatForProperty(h);
     
     initMap(h.coords, h.name);
 }
 
+/* "Rooms & house rules" on the details page. Every field is optional on
+   the record (listings saved before these fields existed lack them), so
+   anything missing reads "Not specified" rather than blank/undefined.
+   Free text is landowner input -- always escaped. */
+function renderRulesSection(h) {
+    const notSpecified = '<span class="rules-unset">Not specified</span>';
+    const text = v => (v && String(v).trim()) ? escapeHtml(String(v).trim()) : notSpecified;
+    const chips = value => HOUSE_RULES.filter(r => h.rules?.[r.key] === value)
+        .map(r => `<span class="rule-chip rule-chip-${value}">${value === 'yes' ? '✓' : '✗'} ${r.label}</span>`).join('');
+    const allowed = chips('yes'), notAllowed = chips('no');
+
+    document.getElementById('details-rules-section').innerHTML = `
+        <h3 style="margin-bottom: 20px; font-size: 22px;">Rooms &amp; House Rules</h3>
+        <div class="rules-facts">
+            <div class="rules-fact"><span class="rules-fact-label">Boarders per room</span><span class="rules-fact-value">${h.roomCapacity ? (h.roomCapacity === 1 ? '1 (solo room)' : h.roomCapacity) : notSpecified}</span></div>
+            <div class="rules-fact"><span class="rules-fact-label">Minimum stay</span><span class="rules-fact-value">${text(h.minStay)}</span></div>
+            <div class="rules-fact"><span class="rules-fact-label">Curfew</span><span class="rules-fact-value">${text(h.curfew)}</span></div>
+        </div>
+        <div class="rules-group"><p class="rules-group-label">Allowed</p><div class="rule-chips">${allowed || notSpecified}</div></div>
+        <div class="rules-group"><p class="rules-group-label">Not allowed</p><div class="rule-chips">${notAllowed || notSpecified}</div></div>
+        ${h.otherRules && h.otherRules.trim() ? `<div class="rules-group"><p class="rules-group-label">Other rules</p><p class="rules-other">${escapeHtml(h.otherRules.trim())}</p></div>` : ''}`;
+}
+
+/* BUG (fixed 2026-10-13): map creation is deferred 200 ms (below), and
+   nothing cancelled a pending one. Two openDetails() calls inside that
+   window -- returning from directions.html, or a guest signing in from
+   a gated action and resumePendingAction() reopening the listing --
+   queued two L.map() calls on the same container: the second threw "Map
+   container is already initialized", and a later map.remove() threw
+   "Map container is being reused by another instance", which aborted
+   sign-in before the chat/review it was resuming could open. Every
+   teardown now goes through destroyDetailsMap(), which also cancels a
+   pending creation. */
+let mapInitTimer = null;
+function destroyDetailsMap() {
+    clearTimeout(mapInitTimer);
+    mapInitTimer = null;
+    if (map) { map.remove(); map = null; }
+}
+
 function initMap(coords, name) {
-    if (map) map.remove();
-    setTimeout(() => {
+    destroyDetailsMap();
+    mapInitTimer = setTimeout(() => {
+        mapInitTimer = null;
         map = L.map('details-map', { zoomControl: false, maxBounds: albayBounds, maxBoundsViscosity: 1.0, minZoom: 10 }).setView(coords, 16);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
         L.marker(coords).addTo(map).bindPopup(name).openPopup();
@@ -1495,7 +1742,7 @@ function initMap(coords, name) {
 }
 
 function closeDetails() { 
-    if(map) { map.remove(); map = null; }
+    destroyDetailsMap();
     currentPropertyContext = null;
     goHome();
 }
@@ -1648,6 +1895,57 @@ function onManualCoordChange(prefix, map, getMarker, setMarker) {
 
 // ---- ADD LISTING ----
 let addMap, selectionMarker;
+/* ---- ROOMS & HOUSE RULES (listing form) ----
+   The same block appears in the add and edit forms; `prefix` is 'add'
+   or 'edit', matching the element ids in index.html. */
+function renderRulesFieldset(prefix) {
+    const fs = document.getElementById(prefix + '-rules');
+    fs.querySelectorAll('.rule-row').forEach(r => r.remove());
+    fs.insertAdjacentHTML('beforeend', HOUSE_RULES.map(r => `
+        <div class="rule-row" role="radiogroup" aria-label="${r.label}">
+            <span class="rule-name">${r.icon} ${r.label}</span>
+            <div class="rule-options">
+                <label><input type="radio" name="${prefix}-rule-${r.key}" value="yes"><span>Allowed</span></label>
+                <label><input type="radio" name="${prefix}-rule-${r.key}" value="no"><span>Not allowed</span></label>
+                <label><input type="radio" name="${prefix}-rule-${r.key}" value="" checked><span>Not set</span></label>
+            </div>
+        </div>`).join(''));
+}
+
+function readListingExtras(prefix) {
+    const rules = {};
+    HOUSE_RULES.forEach(r => {
+        const v = document.querySelector(`input[name="${prefix}-rule-${r.key}"]:checked`)?.value;
+        if (v) rules[r.key] = v; // "Not set" stores nothing, same as an old listing
+    });
+    return {
+        roomCapacity: parseInt(document.getElementById(prefix + '-room-capacity').value),
+        rules,
+        otherRules: document.getElementById(prefix + '-other-rules').value.trim(),
+        minStay: document.getElementById(prefix + '-min-stay').value.trim(),
+        curfew: document.getElementById(prefix + '-curfew').value.trim()
+    };
+}
+
+function fillListingExtras(prefix, h) {
+    document.getElementById(prefix + '-room-capacity').value = h.roomCapacity ?? '';
+    HOUSE_RULES.forEach(r => {
+        const v = h.rules?.[r.key] || '';
+        const radio = document.querySelector(`input[name="${prefix}-rule-${r.key}"][value="${v}"]`);
+        if (radio) radio.checked = true;
+    });
+    document.getElementById(prefix + '-other-rules').value = h.otherRules || '';
+    document.getElementById(prefix + '-min-stay').value = h.minStay || '';
+    document.getElementById(prefix + '-curfew').value = h.curfew || '';
+}
+
+// Boarders sharing one room can't exceed the whole house's capacity.
+function roomCapacityError(roomCapacity, total) {
+    if (!Number.isInteger(roomCapacity) || roomCapacity < 1) return 'Please enter how many boarders share one room (at least 1).';
+    if (Number.isInteger(total) && roomCapacity > total) return `Boarders per room (${roomCapacity}) can't be more than the total capacity (${total}).`;
+    return null;
+}
+
 function openAddListing() {
     document.getElementById('add-listing-modal').style.display = 'block';
     // Needed for the pin-proximity warning -- landowners otherwise never
@@ -1686,10 +1984,13 @@ function closeAddListing() {
 
 function saveNewListing(e) {
     e.preventDefault();
-    const lat = document.getElementById('add-lat').value; 
+    const lat = document.getElementById('add-lat').value;
     const lng = document.getElementById('add-lng').value;
     if(!lat || !lng || isNaN(lat) || isNaN(lng)) return alert("Please mark location on map.");
-    
+    const extras = readListingExtras('add');
+    const roomError = roomCapacityError(extras.roomCapacity, parseInt(document.getElementById('add-total').value));
+    if (roomError) return alert(roomError);
+
     const saveBtn = document.getElementById('save-property-btn');
     saveBtn.innerText = "Saving & Compressing Photos...";
     saveBtn.disabled = true;
@@ -1715,7 +2016,8 @@ function saveNewListing(e) {
             owner: "Ana Ramos",
             verificationTier: landownerProfile.verificationTier,
             status: 'pending',
-            streetPhotos: photosArray
+            streetPhotos: photosArray,
+            ...extras
         });
         saveData(['houses']); renderAll(); closeAddListing(); document.getElementById('listing-form').reset();
         if(selectionMarker) { addMap.removeLayer(selectionMarker); selectionMarker = null; }
@@ -1757,6 +2059,7 @@ function openEditListing(id) {
 
     const checkboxes = document.querySelectorAll('#edit-listing-modal .amenities-toggle-grid input[type="checkbox"]');
     checkboxes.forEach(cb => { cb.checked = h.amenities.includes(cb.value); });
+    fillListingExtras('edit', h);
 
     document.getElementById('edit-listing-modal').style.display = 'block';
     // See openAddListing()'s identical call for why this is needed here.
@@ -1801,10 +2104,13 @@ function saveEditListing(e) {
     e.preventDefault();
     if (!editingHouseId) return;
 
-    const lat = document.getElementById('edit-lat').value; 
+    const lat = document.getElementById('edit-lat').value;
     const lng = document.getElementById('edit-lng').value;
     if(!lat || !lng || isNaN(lat) || isNaN(lng)) return alert("Please mark location on map.");
-    
+    const extras = readListingExtras('edit');
+    const roomError = roomCapacityError(extras.roomCapacity, parseInt(document.getElementById('edit-total').value));
+    if (roomError) return alert(roomError);
+
     const updateBtn = document.getElementById('update-property-btn');
     updateBtn.innerText = "Updating...";
     updateBtn.disabled = true;
@@ -1826,6 +2132,7 @@ function saveEditListing(e) {
     h.total = parseInt(document.getElementById('edit-total').value);
     h.available = parseInt(document.getElementById('edit-available').value);
     h.coords = [parseFloat(lat), parseFloat(lng)];
+    Object.assign(h, extras);
 
     const amenities = [];
     document.querySelectorAll('#edit-listing-modal .amenities-toggle-grid input:checked').forEach(c => amenities.push(c.value));
@@ -2273,6 +2580,7 @@ function hasAlreadyReviewed(propertyId) {
 
 function openReviewModal() {
     if (!currentPropertyId) return;
+    if (!requireAccount('review')) return;
     const h = houses.find(x => x.id === currentPropertyId);
     document.getElementById('review-prop-name').innerText = h ? h.name : '';
     pendingStarValue = 0;
@@ -2391,7 +2699,11 @@ function renderReviews(propertyId) {
 
     // Only students review, and only once per property.
     if (btn) {
-        const eligible = currentUser?.role === 'student' && !hasAlreadyReviewed(propertyId);
+        // Guests see it too, relabelled -- tapping it asks them to sign in
+        // (see requireAccount()).
+        const guest = isGuest();
+        const eligible = guest || (currentUser?.role === 'student' && !hasAlreadyReviewed(propertyId));
+        btn.innerText = guest ? 'Sign in to review' : 'Write a Review';
         btn.style.display = eligible ? 'inline-block' : 'none';
     }
 
@@ -2468,7 +2780,7 @@ function logAudit(action, entityType, entityId, label) {
    The param is stripped via history.replaceState so an F5 afterwards
    reopens on the grid instead of silently re-triggering this. */
 function openPropertyFromQueryParam() {
-    if (currentUser?.role !== 'student') return;
+    if (selectedRole !== 'student') return; // signed-in student or guest
     const params = new URLSearchParams(location.search);
     if (!params.has('property')) return;
 
@@ -2494,7 +2806,7 @@ function openPropertyFromQueryParam() {
    (guarded on its own DOM lookups), and mirrors loadRoadNetwork()'s
    existing "also refresh an open details page" pattern above. */
 window.addEventListener('storage', (e) => {
-    if (!currentUser) return;
+    if (!currentUser && !isGuest()) return; // a guest still gets live listing updates
     switch (e.key) {
         case CONVERSATIONS_KEY:
             reloadConversations();
@@ -2543,5 +2855,7 @@ window.addEventListener('storage', (e) => {
 
 // ---- INIT ----
 populateSchoolDropdown();
+renderRulesFieldset('add');
+renderRulesFieldset('edit');
 restoreSession();
 openPropertyFromQueryParam();

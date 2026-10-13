@@ -1197,8 +1197,20 @@ const AUDIT_CATEGORIES = {
 // back doesn't reset the filter.
 let auditCategoryFilter = 'all';
 
+// 10 entries per page instead of one long scroll (panel feedback). Same
+// module-level persistence as auditCategoryFilter; a category change
+// starts over at page 1. logAudit caps the log at 300, so <= 30 pages.
+const AUDIT_PAGE_SIZE = 10;
+let auditPage = 1;
+
 function setAuditCategoryFilter(category) {
     auditCategoryFilter = category;
+    auditPage = 1;
+    renderAuditLog();
+}
+
+function setAuditPage(page) {
+    auditPage = page;
     renderAuditLog();
 }
 
@@ -1219,12 +1231,24 @@ function renderAuditLog() {
         return;
     }
 
+    // Clamp: the log can shrink under the current page (another tab, or a
+    // category with fewer entries) -- never show an empty page 4 of 2.
+    const pageCount = Math.max(1, Math.ceil(filtered.length / AUDIT_PAGE_SIZE));
+    auditPage = Math.min(Math.max(1, auditPage), pageCount);
+    const pageRows = filtered.slice((auditPage - 1) * AUDIT_PAGE_SIZE, auditPage * AUDIT_PAGE_SIZE);
+    const pager = `
+        <div class="audit-pager">
+            <button class="audit-page-btn" onclick="setAuditPage(${auditPage - 1})" ${auditPage <= 1 ? 'disabled' : ''}>‹ Prev</button>
+            <span class="audit-page-info">Page ${auditPage} of ${pageCount} · ${filtered.length} entr${filtered.length === 1 ? 'y' : 'ies'}</span>
+            <button class="audit-page-btn" onclick="setAuditPage(${auditPage + 1})" ${auditPage >= pageCount ? 'disabled' : ''}>Next ›</button>
+        </div>`;
+
     panel.innerHTML = filterBar + `
         <div style="overflow-x:auto; background:white; border-radius:15px; padding:20px;
                     box-shadow:0 5px 20px rgba(0,0,0,0.05);">
         <table class="dashboard-table">
             <thead><tr><th>Timestamp</th><th>Actor</th><th>Action</th><th>Details</th></tr></thead>
-            <tbody>${filtered.map(l => `
+            <tbody>${pageRows.map(l => `
                 <tr>
                     <td style="white-space:nowrap;">${new Date(l.createdAt).toLocaleString()}</td>
                     <td>${escapeHtml(l.userName)}</td>
@@ -1232,7 +1256,7 @@ function renderAuditLog() {
                     <td>${escapeHtml(l.label)}</td>
                 </tr>`).join('')}
             </tbody>
-        </table></div>`;
+        </table>${pager}</div>`;
 }
 
 /* Fires in every OTHER tab/window on this origin when localStorage

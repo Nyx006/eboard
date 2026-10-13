@@ -474,3 +474,98 @@ select {
     #landowner-profile-modal .mod-actions button,
     #student-profile-modal .mod-actions button { width: 100%; }
 }
+
+/* ============================================================
+   Panel feedback (2026-10-13): labelled form fields, guest
+   browsing, listing rooms & rules, student filters, audit paging.
+   ============================================================ */
+
+/* Labels above inputs instead of placeholder-as-label. Inside an
+   .input-row each .field takes an equal share; the row already
+   stacks to one column at <=480px (see the 480px block above). */
+.field { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; text-align: left; } /* .auth-box centres its text */
+.field-label { font-size: 13px; font-weight: 600; color: #444; }
+.form-textarea { width: 100%; padding: 14px 16px; border: 1px solid #ddd; border-radius: 10px; font-family: inherit; font-size: 16px; resize: vertical; }
+.form-textarea:focus { border-color: #9B72FF; outline: none; box-shadow: 0 0 0 3px rgba(155, 114, 255, 0.1); }
+
+/* ---- Guest browsing ---- */
+.auth-reason { background: #F4F0FF; color: #5B3FC4; border-radius: 10px; padding: 12px 14px; font-size: 14px; line-height: 1.5; }
+.auth-divider { display: flex; align-items: center; gap: 12px; color: #999; font-size: 13px; margin: 4px 0 14px; }
+.auth-divider::before, .auth-divider::after { content: ''; flex: 1; height: 1px; background: #e5e5e5; }
+.guest-btn { width: 100%; min-height: 48px; background: white; color: #6b4fc4; border: 2px solid #9B72FF; border-radius: 12px; font-size: 16px; font-weight: 700; font-family: inherit; cursor: pointer; }
+.guest-btn:hover { background: #F4F0FF; }
+/* Id + class so it outranks the mobile `#nav-messages, #nav-myprofile
+   { display: inline-flex !important }` rule further up. */
+#nav-messages.guest-hidden, #nav-myprofile.guest-hidden { display: none !important; }
+
+/* ---- Listing form: house rules ---- */
+.rules-fieldset { border: 1px solid #eee; background: #F8F9FA; border-radius: 12px; padding: 14px 16px 6px; margin-bottom: 15px; }
+.rules-fieldset legend { padding: 0 6px; }
+.rule-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid #eee; }
+.rule-row:last-child { border-bottom: none; }
+.rule-name { font-weight: 600; color: #333; font-size: 15px; }
+.rule-options { display: flex; gap: 6px; }
+.rule-options label { position: relative; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; }
+.rule-options input { position: absolute; opacity: 0; width: 1px; height: 1px; padding: 0; margin: 0; }
+.rule-options span { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid #ddd; background: white; font-size: 13px; font-weight: 600; color: #555; white-space: nowrap; }
+.rule-options input:checked + span { background: #9B72FF; border-color: #9B72FF; color: white; }
+.rule-options input[value="no"]:checked + span { background: #dc3545; border-color: #dc3545; }
+.rule-options input[value=""]:checked + span { background: #6c757d; border-color: #6c757d; }
+.rule-options input:focus-visible + span { outline: 3px solid rgba(155, 114, 255, 0.45); outline-offset: 2px; }
+
+/* ---- Details page: rooms & house rules ---- */
+.rules-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 18px; }
+.rules-fact { background: #F8F9FA; border: 1px solid #eee; border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
+.rules-fact-label { font-size: 12px; font-weight: 700; color: #6b4fc4; text-transform: uppercase; letter-spacing: 0.4px; }
+.rules-fact-value { font-size: 17px; font-weight: 600; color: #222; }
+.rules-group { margin-bottom: 14px; }
+.rules-group-label { font-size: 14px; font-weight: 700; color: #444; margin-bottom: 8px; }
+.rule-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.rule-chip { padding: 8px 14px; border-radius: 20px; font-size: 14px; font-weight: 600; }
+.rule-chip-yes { background: #E6F6EA; color: #1E7B34; }
+.rule-chip-no { background: #FDECEE; color: #B02A37; }
+.rules-unset { color: #999; font-weight: 500; font-style: italic; font-size: 14px; }
+.rules-other { color: #444; line-height: 1.6; white-space: pre-wrap; }
+
+/* ---- Student filters (inside the purple search bar) ---- */
+.filter-panel { background: rgba(255,255,255,0.14); border-radius: 12px; color: white; }
+.filter-panel > summary { cursor: pointer; padding: 14px 18px; min-height: 48px; font-weight: 700; font-size: 15px; list-style: none; display: flex; align-items: center; gap: 6px; user-select: none; -webkit-tap-highlight-color: transparent; border-radius: 12px; }
+.filter-panel > summary:focus { outline: none; }
+.filter-panel > summary:focus-visible { outline: 3px solid rgba(255,255,255,0.7); outline-offset: -3px; }
+.filter-panel > summary::-webkit-details-marker { display: none; }
+.filter-panel > summary::after { content: '▾'; margin-left: auto; transition: transform 0.2s; }
+.filter-panel[open] > summary::after { transform: rotate(180deg); }
+.filter-count { font-weight: 500; opacity: 0.9; }
+.filter-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 0 18px 14px; }
+.filter-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.filter-field label { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.95); }
+.search-inner .filter-field select { padding: 12px 40px 12px 14px; font-size: 15px; }
+.filter-check { display: flex; align-items: center; gap: 10px; min-height: 48px; background: rgba(255,255,255,0.15); padding: 0 16px; border-radius: 12px; font-weight: 600; font-size: 15px; cursor: pointer; }
+.search-inner .filter-check input { width: 20px; height: 20px; padding: 0; margin: 0; box-shadow: none; accent-color: white; flex: none; }
+.filter-clear { background: white; color: #6b4fc4; border: none; border-radius: 10px; min-height: 44px; padding: 0 18px; font-weight: 700; font-size: 14px; font-family: inherit; cursor: pointer; }
+.filter-panel .filter-clear { margin: 0 18px 16px; }
+.result-count { color: #666; font-size: 14px; margin: -10px 0 18px; }
+.grid-empty { grid-column: 1 / -1; text-align: center; padding: 40px 20px; background: white; border: 1px dashed #ddd; border-radius: 16px; color: #555; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.grid-empty .filter-clear { background: #9B72FF; color: white; }
+
+/* ---- Admin audit log paging ---- */
+.audit-pager { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+.audit-page-btn { min-height: 44px; padding: 0 18px; border-radius: 10px; border: 1px solid #E0D5FF; background: #F4F0FF; color: #6b4fc4; font-weight: 700; font-size: 14px; font-family: inherit; cursor: pointer; }
+.audit-page-btn:disabled { opacity: 0.4; cursor: default; }
+.audit-page-info { font-size: 14px; color: #555; }
+
+@media (max-width: 480px) {
+    /* Rule rows: name above three equal-width choices. */
+    .rule-row { flex-direction: column; align-items: stretch; gap: 8px; }
+    .rule-options { width: 100%; }
+    .rule-options label { flex: 1; }
+    .rule-options span { width: 100%; padding: 0 6px; }
+
+    .rules-facts { grid-template-columns: 1fr; }
+    .filter-grid { grid-template-columns: 1fr; }
+    .audit-pager { justify-content: center; }
+    .audit-page-info { order: -1; width: 100%; text-align: center; }
+}
+@media (min-width: 481px) and (max-width: 800px) {
+    .filter-grid { grid-template-columns: repeat(2, 1fr); }
+}

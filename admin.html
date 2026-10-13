@@ -18,8 +18,8 @@
             <p class="admin-login-hint">Demo credentials: admin@eboard.ph / eboard2026</p>
             <form onsubmit="adminLogin(event)">
                 <div style="display:flex; flex-direction:column; gap:20px;">
-                    <input type="email" id="admin-email" placeholder="Email" required>
-                    <input type="password" id="admin-password" placeholder="Password" required>
+                    <div class="field"><label class="field-label" for="admin-email">Email</label><input type="email" id="admin-email" required></div>
+                    <div class="field"><label class="field-label" for="admin-password">Password</label><input type="password" id="admin-password" required></div>
                     <p id="admin-login-error" class="admin-login-error">Incorrect email or password.</p>
                     <button type="submit" class="main-auth-btn">Sign In</button>
                 </div>

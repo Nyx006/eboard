@@ -31,28 +31,40 @@
         <h1 class="portal-logo">E-BOARD</h1>
         <div class="auth-box">
             <h2 id="auth-title">Sign In</h2>
+            <!-- Shown when a guest hits an account-only action (review,
+                 chat, schedule) -- see requireAccount() in script.js. -->
+            <p id="auth-reason" class="auth-reason" style="display:none;"></p>
             <div id="reg-fields" style="display: none;">
                 <div class="input-row">
-                    <input type="text" id="reg-fn" placeholder="First Name">
-                    <input type="text" id="reg-ln" placeholder="Last Name">
+                    <div class="field"><label class="field-label" for="reg-fn">First name</label><input type="text" id="reg-fn"></div>
+                    <div class="field"><label class="field-label" for="reg-ln">Last name</label><input type="text" id="reg-ln"></div>
                 </div>
                 <div id="reg-fields-student" style="display:none; margin-top:15px;">
-                    <select id="reg-school"></select>
-                    <input type="text" id="reg-school-other" placeholder="Enter your school" style="display:none; margin-top:15px;">
-                    <select id="reg-year-level" style="margin-top:15px;"></select>
+                    <div class="field"><label class="field-label" for="reg-school">School</label><select id="reg-school"></select></div>
+                    <input type="text" id="reg-school-other" placeholder="Enter your school" aria-label="School name" style="display:none; margin-top:10px;">
+                    <div class="field" style="margin-top:15px;"><label class="field-label" for="reg-year-level">Year level</label><select id="reg-year-level"></select></div>
                 </div>
                 <div id="reg-fields-landowner" style="display:none; margin-top:15px;">
-                    <textarea id="reg-about" placeholder="A short line about yourself (optional)"
-                        style="width:100%; padding:16px; border:1px solid #ddd; border-radius:10px; min-height:70px; font-family:inherit; font-size:16px; resize:vertical;"></textarea>
+                    <div class="field"><label class="field-label" for="reg-about">About you (optional)</label>
+                    <textarea id="reg-about" placeholder="A short line about yourself"
+                        style="width:100%; padding:16px; border:1px solid #ddd; border-radius:10px; min-height:70px; font-family:inherit; font-size:16px; resize:vertical;"></textarea></div>
                 </div>
             </div>
-            <input type="email" placeholder="Email">
-            <input type="password" placeholder="Password">
-            <div id="reg-confirm-pass" style="display: none;">
-                <input type="password" placeholder="Confirm Password">
+            <!-- These ids exist only so the <label for> can point at the
+                 inputs. Nothing reads them: credentials aren't checked or
+                 hashed yet, so they are never collected (see handleAuth()). -->
+            <div class="field"><label class="field-label" for="auth-email">Email</label><input type="email" id="auth-email"></div>
+            <div class="field"><label class="field-label" for="auth-password">Password</label><input type="password" id="auth-password"></div>
+            <div id="reg-confirm-pass" class="field" style="display: none;">
+                <label class="field-label" for="auth-password-confirm">Confirm password</label><input type="password" id="auth-password-confirm">
             </div>
             <button id="auth-btn" class="main-auth-btn" onclick="handleAuth()">Sign In</button>
             <p class="auth-toggle-text"><span id="auth-msg">Need an account?</span> <a href="#" onclick="toggleAuthMode()">Sign Up</a></p>
+            <!-- Student portal only (see updateAuthUI()). -->
+            <div id="guest-entry" style="display:none;">
+                <div class="auth-divider"><span>or</span></div>
+                <button type="button" id="guest-btn" class="guest-btn" onclick="enterAsGuest()">Browse without an account</button>
+            </div>
             <a href="#" class="back-link" onclick="backToPortal()">← Back to selection</a>
         </div>
     </div>
@@ -76,7 +88,7 @@
                         <span class="user-name">Ana Ramos</span>
                         <span id="display-user-role" class="user-role">Role</span>
                     </div>
-                    <button class="logout-btn" onclick="logout()">Logout</button>
+                    <button class="logout-btn" id="header-auth-btn" onclick="logout()">Logout</button>
                 </div>
             </nav>
         </header>
@@ -86,10 +98,50 @@
                 <div class="search-inner">
                     <input type="text" id="search-input" placeholder="Search by name or location..." oninput="renderAll()">
                     <select id="school-select" onchange="updateSchool()"></select>
+                    <!-- Collapsed by default: on a phone, five always-open
+                         filters would push every listing below the fold. -->
+                    <details class="filter-panel" id="filter-panel">
+                        <summary>Filters <span id="filter-count" class="filter-count"></span></summary>
+                        <div class="filter-grid">
+                            <div class="filter-field">
+                                <label for="filter-price">Max budget</label>
+                                <select id="filter-price" onchange="renderAll()">
+                                    <option value="0">Any price</option>
+                                    <option value="3000">Up to ₱3,000</option>
+                                    <option value="5000">Up to ₱5,000</option>
+                                    <option value="7000">Up to ₱7,000</option>
+                                    <option value="10000">Up to ₱10,000</option>
+                                </select>
+                            </div>
+                            <div class="filter-field">
+                                <label for="filter-dist">Distance to campus</label>
+                                <select id="filter-dist" onchange="renderAll()">
+                                    <option value="0">Any distance</option>
+                                    <option value="0.5">Within 500 m</option>
+                                    <option value="1">Within 1 km</option>
+                                    <option value="2">Within 2 km</option>
+                                    <option value="5">Within 5 km</option>
+                                </select>
+                            </div>
+                            <div class="filter-field">
+                                <label for="filter-room">Boarders per room</label>
+                                <select id="filter-room" onchange="renderAll()">
+                                    <option value="0">Any</option>
+                                    <option value="1">Solo room (1)</option>
+                                    <option value="2">Up to 2</option>
+                                    <option value="4">Up to 4</option>
+                                </select>
+                            </div>
+                            <label class="filter-check"><input type="checkbox" id="filter-pets" onchange="renderAll()"> Pets allowed</label>
+                            <label class="filter-check"><input type="checkbox" id="filter-vacant" onchange="renderAll()"> Vacancies only</label>
+                        </div>
+                        <button type="button" class="filter-clear" onclick="clearFilters()">Clear filters</button>
+                    </details>
                 </div>
             </section>
             <main class="content">
                 <h2 class="section-title">Discover Accommodations</h2>
+                <p id="result-count" class="result-count"></p>
                 <div id="boarding-house-grid" class="airbnb-grid"></div>
             </main>
         </div>
@@ -125,6 +177,9 @@
                     <h3 style="margin-bottom: 20px; font-size: 22px;">Key Amenities</h3>
                     <div id="details-amenities-grid" class="amenities-grid"></div>
                 </div>
+
+                <!-- Filled by renderRulesSection() in script.js. -->
+                <div id="details-rules-section" class="rules-container" style="margin-top: 40px;"></div>
 
                 <div id="landowner-about-section" style="margin-top: 40px;"></div>
 
@@ -254,16 +309,16 @@
             <span class="close-btn" onclick="closeAddListing()">×</span>
             <h2 style="color:#9B72FF; margin-bottom:25px; font-size: 26px;">Add New Property</h2>
             <form id="listing-form" onsubmit="saveNewListing(event)">
-                <div style="margin-bottom: 15px;"><input type="text" id="add-name" placeholder="Property Name" required></div>
+                <div class="field" style="margin-bottom: 15px;"><label class="field-label" for="add-name">Property name</label><input type="text" id="add-name" required></div>
                 <div class="input-row" style="margin-bottom: 15px;">
-                    <input type="text" id="add-loc" placeholder="Brgy/Location" required>
-                    <input type="number" id="add-price" placeholder="Price per month" required>
+                    <div class="field"><label class="field-label" for="add-loc">Location (barangay)</label><input type="text" id="add-loc" placeholder="e.g. Purok 6, Rawis" required></div>
+                    <div class="field"><label class="field-label" for="add-price">Monthly price (₱)</label><input type="number" id="add-price" min="0" placeholder="e.g. 4500" required></div>
                 </div>
                 <div class="input-row" style="margin-bottom: 15px;">
-                    <input type="number" id="add-total" placeholder="Total Capacity" required>
-                    <input type="number" id="add-available" placeholder="Initially Available" required>
+                    <div class="field"><label class="field-label" for="add-total">Total capacity (boarders)</label><input type="number" id="add-total" min="1" required></div>
+                    <div class="field"><label class="field-label" for="add-available">Currently available</label><input type="number" id="add-available" min="0" required></div>
                 </div>
-                <h4 style="margin: 20px 0 12px 0; font-size: 15px; color: #444;">Toggle Amenities:</h4>
+                <h4 style="margin: 20px 0 12px 0; font-size: 15px; color: #444;">Amenities</h4>
                 <div class="amenities-toggle-grid">
                     <label><input type="checkbox" value="🛏️ Bed"> Bed</label>
                     <label><input type="checkbox" value="📶 WiFi"> WiFi</label>
@@ -273,6 +328,14 @@
                     <label><input type="checkbox" value="📷 CCTV"> CCTV</label>
                     <label><input type="checkbox" value="⚡ Electricity"> Electricity</label>
                     <label><input type="checkbox" value="❄️ Aircon"> Aircon</label>
+                </div>
+                <h4 style="margin: 20px 0 12px 0; font-size: 15px; color: #444;">Rooms &amp; house rules</h4>
+                <div class="field" style="margin-bottom: 15px;"><label class="field-label" for="add-room-capacity">Boarders per room</label><input type="number" id="add-room-capacity" min="1" placeholder="e.g. 2" required></div>
+                <fieldset class="rules-fieldset" id="add-rules"><legend class="field-label">House rules</legend></fieldset>
+                <div class="field" style="margin-bottom: 15px;"><label class="field-label" for="add-other-rules">Other rules (optional)</label><textarea id="add-other-rules" class="form-textarea" maxlength="300" rows="3" placeholder="e.g. Lights out at 11 PM; no loud music"></textarea></div>
+                <div class="input-row" style="margin-bottom: 15px;">
+                    <div class="field"><label class="field-label" for="add-min-stay">Minimum stay</label><input type="text" id="add-min-stay" maxlength="80" placeholder="e.g. 1 semester"></div>
+                    <div class="field"><label class="field-label" for="add-curfew">Curfew</label><input type="text" id="add-curfew" maxlength="80" placeholder="e.g. 10:00 PM, or None"></div>
                 </div>
                 <h4 style="margin: 20px 0 12px 0; font-size: 15px; color: #444;">Upload Photos (Hold Shift/Ctrl to select multiple):</h4>
                 <div class="input-row" style="margin-bottom: 20px;">
@@ -285,8 +348,8 @@
                 <details style="margin-bottom: 20px;">
                     <summary style="cursor:pointer; font-size:14px; color:#666;">Enter coordinates manually</summary>
                     <div class="input-row" style="margin-top:12px;">
-                        <input type="number" id="add-manual-lat" placeholder="Latitude (e.g. 13.163772)" step="0.000001" min="13.090" max="13.220">
-                        <input type="number" id="add-manual-lng" placeholder="Longitude (e.g. 123.751261)" step="0.000001" min="123.690" max="123.800">
+                        <div class="field"><label class="field-label" for="add-manual-lat">Latitude</label><input type="number" id="add-manual-lat" placeholder="e.g. 13.163772" step="0.000001" min="13.090" max="13.220"></div>
+                        <div class="field"><label class="field-label" for="add-manual-lng">Longitude</label><input type="number" id="add-manual-lng" placeholder="e.g. 123.751261" step="0.000001" min="123.690" max="123.800"></div>
                     </div>
                 </details>
                 <input type="hidden" id="add-lat"><input type="hidden" id="add-lng">
@@ -300,16 +363,16 @@
             <span class="close-btn" onclick="closeEditListing()">×</span>
             <h2 style="color:#9B72FF; margin-bottom:25px; font-size: 26px;">Edit Property</h2>
             <form id="edit-listing-form" onsubmit="saveEditListing(event)">
-                <div style="margin-bottom: 15px;"><input type="text" id="edit-name" placeholder="Property Name" required></div>
+                <div class="field" style="margin-bottom: 15px;"><label class="field-label" for="edit-name">Property name</label><input type="text" id="edit-name" required></div>
                 <div class="input-row" style="margin-bottom: 15px;">
-                    <input type="text" id="edit-loc" placeholder="Brgy/Location" required>
-                    <input type="number" id="edit-price" placeholder="Price per month" required>
+                    <div class="field"><label class="field-label" for="edit-loc">Location (barangay)</label><input type="text" id="edit-loc" placeholder="e.g. Purok 6, Rawis" required></div>
+                    <div class="field"><label class="field-label" for="edit-price">Monthly price (₱)</label><input type="number" id="edit-price" min="0" placeholder="e.g. 4500" required></div>
                 </div>
                 <div class="input-row" style="margin-bottom: 15px;">
-                    <input type="number" id="edit-total" placeholder="Total Capacity" required>
-                    <input type="number" id="edit-available" placeholder="Initially Available" required>
+                    <div class="field"><label class="field-label" for="edit-total">Total capacity (boarders)</label><input type="number" id="edit-total" min="1" required></div>
+                    <div class="field"><label class="field-label" for="edit-available">Currently available</label><input type="number" id="edit-available" min="0" required></div>
                 </div>
-                <h4 style="margin: 20px 0 12px 0; font-size: 15px; color: #444;">Toggle Amenities:</h4>
+                <h4 style="margin: 20px 0 12px 0; font-size: 15px; color: #444;">Amenities</h4>
                 <div class="amenities-toggle-grid" id="edit-amenities-grid">
                     <label><input type="checkbox" value="🛏️ Bed"> Bed</label>
                     <label><input type="checkbox" value="📶 WiFi"> WiFi</label>
@@ -319,6 +382,14 @@
                     <label><input type="checkbox" value="📷 CCTV"> CCTV</label>
                     <label><input type="checkbox" value="⚡ Electricity"> Electricity</label>
                     <label><input type="checkbox" value="❄️ Aircon"> Aircon</label>
+                </div>
+                <h4 style="margin: 20px 0 12px 0; font-size: 15px; color: #444;">Rooms &amp; house rules</h4>
+                <div class="field" style="margin-bottom: 15px;"><label class="field-label" for="edit-room-capacity">Boarders per room</label><input type="number" id="edit-room-capacity" min="1" placeholder="e.g. 2" required></div>
+                <fieldset class="rules-fieldset" id="edit-rules"><legend class="field-label">House rules</legend></fieldset>
+                <div class="field" style="margin-bottom: 15px;"><label class="field-label" for="edit-other-rules">Other rules (optional)</label><textarea id="edit-other-rules" class="form-textarea" maxlength="300" rows="3" placeholder="e.g. Lights out at 11 PM; no loud music"></textarea></div>
+                <div class="input-row" style="margin-bottom: 15px;">
+                    <div class="field"><label class="field-label" for="edit-min-stay">Minimum stay</label><input type="text" id="edit-min-stay" maxlength="80" placeholder="e.g. 1 semester"></div>
+                    <div class="field"><label class="field-label" for="edit-curfew">Curfew</label><input type="text" id="edit-curfew" maxlength="80" placeholder="e.g. 10:00 PM, or None"></div>
                 </div>
                 <h4 style="margin: 20px 0 12px 0; font-size: 15px; color: #444;">Replace Photos (Leave blank to keep current photos):</h4>
                 <div class="input-row" style="margin-bottom: 20px;">
@@ -331,8 +402,8 @@
                 <details style="margin-bottom: 20px;">
                     <summary style="cursor:pointer; font-size:14px; color:#666;">Enter coordinates manually</summary>
                     <div class="input-row" style="margin-top:12px;">
-                        <input type="number" id="edit-manual-lat" placeholder="Latitude (e.g. 13.163772)" step="0.000001" min="13.090" max="13.220">
-                        <input type="number" id="edit-manual-lng" placeholder="Longitude (e.g. 123.751261)" step="0.000001" min="123.690" max="123.800">
+                        <div class="field"><label class="field-label" for="edit-manual-lat">Latitude</label><input type="number" id="edit-manual-lat" placeholder="e.g. 13.163772" step="0.000001" min="13.090" max="13.220"></div>
+                        <div class="field"><label class="field-label" for="edit-manual-lng">Longitude</label><input type="number" id="edit-manual-lng" placeholder="e.g. 123.751261" step="0.000001" min="123.690" max="123.800"></div>
                     </div>
                 </details>
                 <input type="hidden" id="edit-lat"><input type="hidden" id="edit-lng">

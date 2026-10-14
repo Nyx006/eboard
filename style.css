@@ -115,7 +115,7 @@ body { background-color: #F8F9FA; color: #333; overflow-x: hidden; }
 
 .full-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.65); color: white; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; backdrop-filter: blur(2px); z-index: 10; }
 
-.portal-container { height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #fff; text-align: center; }
+.portal-container { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #fff; text-align: center; }
 .portal-logo { color: #9B72FF; font-size: 64px; font-weight: 800; margin-bottom: 10px; letter-spacing: -1px; }
 .portal-subtext { color: #777; margin-bottom: 50px; font-size: 20px; }
 .portal-options { display: flex; gap: 40px; }
@@ -190,13 +190,21 @@ select {
 .content { padding: 50px 5%; max-width: 1200px; margin: 0 auto; }
 .section-title { margin-bottom: 30px; color: #222; font-size: 32px; font-weight: 700; letter-spacing: -0.5px; }
 
-#details-view { position: fixed; top: 70px; left: 0; width: 100%; height: calc(100vh - 70px); background: #F8F9FA; z-index: 900; overflow-y: auto; }
+/* BUG (fixed 2026-10-14): this used top:70px; height:calc(100vh - 70px).
+   On phones the header wraps to ~111px, so the panel started 41px UNDER
+   it ("<- Back" and the distance pill were hidden there); and 100vh is the
+   height with the browser toolbar HIDDEN -- this panel scrolls itself, not
+   the page, so the toolbar never collapses and the panel's last ~60px sat
+   behind it ("Chat with Owner" was unreachable). --header-h is the real
+   header height (syncHeaderHeight() in script.js); dvh is the height that
+   is actually visible. Browsers without dvh keep the vh line. */
+#details-view { position: fixed; top: var(--header-h, 70px); left: 0; width: 100%; height: calc(100vh - var(--header-h, 70px)); height: calc(100dvh - var(--header-h, 70px)); background: #F8F9FA; z-index: 900; overflow-y: auto; }
 .details-map-section { height: 45vh; width: 100%; position: relative; z-index: 1; }
 #details-map { height: 100%; width: 100%; }
 .details-back-btn { position: absolute; top: 25px; left: 5%; z-index: 1000; background: white; border: none; padding: 12px 30px; border-radius: 25px; cursor: pointer; font-weight: bold; color: #9B72FF; box-shadow: 0 4px 15px rgba(0,0,0,0.15); font-size: 16px; transition: transform 0.2s; }
 .details-back-btn:hover { transform: scale(1.05); }
 .distance-label { position: absolute; top: 25px; right: 5%; background: #9B72FF; color: white; padding: 12px 25px; border-radius: 15px; font-size: 15px; font-weight: bold; z-index: 1000; box-shadow: 0 4px 15px rgba(0,0,0,0.15); }
-.details-info-section { width: 100%; background: white; border-radius: 40px 40px 0 0; margin-top: -40px; position: relative; z-index: 2; padding: 50px 5%; min-height: 60vh; max-width: 1200px; margin-left: auto; margin-right: auto; box-shadow: 0 -10px 30px rgba(0,0,0,0.08); }
+.details-info-section { width: 100%; background: white; border-radius: 40px 40px 0 0; margin-top: -40px; position: relative; z-index: 2; padding: 50px 5% calc(50px + env(safe-area-inset-bottom)); min-height: 60vh; max-width: 1200px; margin-left: auto; margin-right: auto; box-shadow: 0 -10px 30px rgba(0,0,0,0.08); }
 .details-banner { background: #F4F0FF; color: #9B72FF; padding: 20px 35px; border-radius: 15px; display: flex; justify-content: space-between; margin-bottom: 40px; align-items: center; font-weight: 600; font-size: 18px; border: 1px solid #E0D5FF; }
 
 .image-gallery { display: flex; gap: 20px; overflow-x: auto; padding-bottom: 20px; scroll-snap-type: x mandatory; }
@@ -235,7 +243,7 @@ select {
 .modal-form-content {
     background: white; margin: 4% auto; padding: 50px; border-radius: 24px;
     width: 100%; max-width: 650px; position: relative; box-shadow: 0 20px 50px rgba(0,0,0,0.2);
-    max-height: 90vh; overflow-y: auto; overflow-wrap: break-word;
+    max-height: 90vh; max-height: 90dvh; overflow-y: auto; overflow-wrap: break-word; /* dvh: see #details-view */
 }
 .modal-form-content::-webkit-scrollbar { width: 8px; }
 .modal-form-content::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
@@ -253,6 +261,11 @@ select {
 .chat-header { background: #9B72FF; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 18px; }
 .chat-close-btn { background: transparent; border: none; color: white; font-size: 26px; line-height: 1; cursor: pointer; min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; transition: 0.2s; }
 .chat-close-btn:hover { background: rgba(255,255,255,0.15); }
+/* Phone-only "back" controls for the full-screen chat (see the 700px block). */
+.chat-back-btn, .inbox-back-btn { display: none; background: transparent; border: none; font-size: 30px; line-height: 1; cursor: pointer;
+    min-width: 44px; min-height: 44px; align-items: center; justify-content: center; border-radius: 8px; }
+.chat-back-btn { color: white; margin-right: 4px; }
+.inbox-head { display: flex; align-items: center; gap: 8px; }
 /* justify-content:flex-end packs messages against the bottom of the
    scroll area (like any real chat UI) instead of the top, so a short
    conversation doesn't leave a large empty gap above the input --
@@ -413,12 +426,17 @@ select {
        same 14px so the three visual groups (icon, username block,
        Logout) read as evenly spaced even though Logout is nested one
        level deeper in the DOM than the icon is. */
-    .main-header { padding: 12px 4%; flex-wrap: wrap; row-gap: 10px; }
-    .logo { font-size: 22px; }
-    .nav-right { width: 100%; justify-content: flex-end; font-size: 13px; gap: 14px; }
+    /* One row (2026-10-14): logo, Messages, Profile, name, Logout. The
+       role label is dropped (the portal already implies it) and a long
+       name is cut with an ellipsis, so the row never wraps -- the old
+       two-row header was ~111px and crowded. */
+    .main-header { padding: 8px 3%; flex-wrap: nowrap; gap: 6px; }
+    .logo { font-size: 20px; flex: none; }
+    .nav-right { min-width: 0; justify-content: flex-end; font-size: 13px; gap: 4px; }
     .header-divider { display: none; }
-    .user-profile { gap: 14px; }
-    .user-name { font-size: 13px; }
+    .user-profile { gap: 8px; min-width: 0; }
+    .profile-text { min-width: 0; }
+    .user-name { font-size: 13px; max-width: 24vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     /* Text label -> icon on mobile (desktop keeps the label). #nav-messages
        and #nav-myprofile are also script.js's click targets (onclick=
@@ -435,17 +453,17 @@ select {
         min-width: 44px; min-height: 44px;
         position: relative;
     }
-    .user-role { font-size: 10px; }
-    .logout-btn { padding: 7px 14px; font-size: 13px; }
+    .user-role { display: none; }
+    .logout-btn { padding: 7px 10px; font-size: 13px; flex: none; white-space: nowrap; }
+    /* Unread badge sits on the Messages icon's corner instead of widening the row. */
+    #nav-messages .badge { position: absolute; top: 2px; right: 0; margin: 0; padding: 1px 6px; font-size: 11px; line-height: 16px; }
 
     .content { padding: 25px 4%; }
     .search-bar { padding: 20px 4%; }
     .airbnb-grid { grid-template-columns: 1fr; gap: 20px; }
 
-    /* Desktop's chat window is a floating 380px panel offset from the
-       right edge — fixed width + right:5% overflows the entire viewport
-       on a phone. Full width, flush to both edges, on mobile only. */
-    .chat-window { width: 100%; right: 0; left: 0; border-radius: 16px 16px 0 0; }
+    /* (The chat window's phone layout -- full screen -- is in the
+       700px block below.) */
 
     .stats-row { flex-direction: column; }
     .dashboard-header { flex-direction: column; align-items: flex-start; gap: 15px; }
@@ -514,7 +532,7 @@ select {
 .rule-options input:focus-visible + span { outline: 3px solid rgba(155, 114, 255, 0.45); outline-offset: 2px; }
 
 /* ---- Details page: rooms & house rules ---- */
-.rules-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 18px; }
+.rules-facts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 18px; } /* Minimum stay, Curfew -- Rooms is its own block above */
 .rules-fact { background: #F8F9FA; border: 1px solid #eee; border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
 .rules-fact-label { font-size: 12px; font-weight: 700; color: #6b4fc4; text-transform: uppercase; letter-spacing: 0.4px; }
 .rules-fact-value { font-size: 17px; font-weight: 600; color: #222; }
@@ -557,32 +575,8 @@ select {
 /* ---- Listing form: room types ---- */
 .rooms-fieldset { border: 1px solid #eee; background: #F8F9FA; border-radius: 12px; padding: 14px 16px; margin-bottom: 15px; }
 .rooms-fieldset legend { padding: 0 6px; }
-.room-rows { display: flex; flex-direction: column; gap: 8px; }
-.room-row { display: grid; grid-template-columns: 58px auto 58px auto 40px; align-items: center; gap: 6px; }
-/* Open spaces: its own line under the row (spans the grid), so the row
-   itself still fits at 360px. Hidden for solo rooms via [hidden]. */
-.room-open { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; }
-.room-open[hidden] { display: none; }
-.room-open-sep { color: #999; display: none; } /* shown only when on one line (wide screens) */
-.room-open .room-open-count { width: 58px; flex: none; }
-.room-open-word { font-size: 14px; color: #444; }
-.room-type-line { display: block; }
-/* Wider than a phone: everything on one line, as in the form mockup --
-   [3] rooms for [2] people · [1] space still open  x */
-@media (min-width: 481px) {
-    .room-row { grid-template-columns: 58px auto 58px auto 1fr 40px; }
-    .room-open { grid-column: 5; grid-row: 1; }
-    .room-open-sep { display: inline; }
-    .room-row .room-remove { grid-column: 6; grid-row: 1; }
-}
-.room-row input { padding: 10px 6px; text-align: center; font-size: 16px; }
-.room-word, .room-people { font-size: 14px; color: #444; white-space: nowrap; }
-.room-remove { width: 40px; height: 40px; border-radius: 8px; border: 1px solid #ddd; background: white; color: #b02a37; font-size: 16px; cursor: pointer; justify-self: end; }
-.room-remove:disabled { color: #ccc; cursor: default; }
-.room-add, .room-remove { user-select: none; -webkit-tap-highlight-color: transparent; }
 .room-add { margin-top: 10px; min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px dashed #9B72FF; background: white; color: #6b4fc4; font-weight: 700; font-size: 14px; font-family: inherit; cursor: pointer; }
-.rooms-summary { margin-top: 10px; font-size: 14px; font-weight: 600; color: #444; }
-.rooms-summary-over { color: #b02a37; }
+.rooms-help { font-size: 13px; color: #666; margin: 0 0 10px; }
 
 @media (max-width: 480px) {
     /* Rule rows: name above three equal-width choices. */
@@ -604,3 +598,87 @@ select {
 @media (min-width: 481px) and (max-width: 800px) {
     .filter-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ---- Full-screen chat on phones (2026-10-14; desktop unchanged) ----
+   Messenger-style: the conversation list (#messages-view) is the first
+   screen, a thread (#chat-overlay) opens over it full screen, and "<"
+   goes back a level. The thread's height follows the VISIBLE viewport
+   (--vv-h / --vv-top, set from window.visualViewport in script.js) so the
+   input sits on top of the on-screen keyboard instead of under it --
+   iOS Safari doesn't shrink the layout for the keyboard; Android Chrome
+   does via interactive-widget=resizes-content in the viewport meta. */
+@media (max-width: 700px) {
+    #messages-view { position: fixed; inset: 0; z-index: 2500; background: #F8F9FA; overflow-y: auto;
+        height: 100vh; height: 100dvh; }
+    #messages-view .content { padding: 0 4% 30px; }
+    .inbox-head { position: sticky; top: 0; z-index: 1; background: #9B72FF; color: white; margin: 0 -4.5% 16px; padding: 8px 4%; }
+    .inbox-head .section-title { color: white; font-size: 20px; margin: 0; }
+    .inbox-back-btn { display: inline-flex; color: white; }
+
+    .chat-window { position: fixed; left: 0; right: 0; width: 100%; border-radius: 0; border: none; z-index: 2600;
+        top: var(--vv-top, 0px); bottom: auto; height: 100vh; height: 100dvh; height: var(--vv-h, 100dvh); }
+    .chat-back-btn { display: inline-flex; }
+    .chat-close-btn { display: none; }
+    .chat-footer { padding-bottom: calc(15px + env(safe-area-inset-bottom)); }
+
+    body.inbox-open, body.chat-open { overflow: hidden; }
+}
+
+/* ---- Two-sided ID (2026-10-14) ---- */
+.id-sides { display: flex; gap: 10px; flex-wrap: wrap; }
+.id-side { margin: 0; flex: 1; min-width: 120px; }
+.id-side figcaption { font-size: 12px; color: #666; margin-top: 4px; text-align: center; }
+.id-side-missing { border: 1px dashed #ccc; border-radius: 10px; padding: 18px 10px; display: flex; align-items: center; justify-content: center; }
+.id-side-missing figcaption { margin: 0; font-style: italic; }
+.id-upload { display: flex; flex-direction: column; gap: 10px; }
+.id-upload-side { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; color: #444; }
+.id-upload-ready { font-size: 13px; color: #1E7B34; display: flex; align-items: center; gap: 6px; min-height: 0; }
+.id-draft-thumb { width: 48px; height: 32px; object-fit: cover; border-radius: 4px; border: 1px solid #ddd; }
+
+/* ---- Room-type cards (2026-10-15) ---- */
+/* Rooms picture on the details page: one box of person icons per room.
+   Boxes and the icons inside them WRAP -- never a sideways scroll, even
+   for a custom room of 12 at 360px. */
+.rooms-picture { margin-bottom: 12px; gap: 10px; }
+.room-group { display: flex; flex-direction: column; gap: 6px; }
+.room-group + .room-group { border-top: 1px solid #eee; padding-top: 10px; }
+.room-group-title { font-size: 15px; font-weight: 700; color: #222; margin: 0; }
+.room-group-rooms { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.room-box { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 5px 6px; background: white; border: 1px solid #ddd; border-radius: 8px; max-width: 100%; }
+.person { width: 22px; height: 22px; flex: none; }
+.person-taken { fill: #8a8f98; }
+.person-open { fill: none; stroke: #1E7B34; stroke-width: 1.8; stroke-dasharray: 2.6 1.8; }
+.person-unknown { fill: none; stroke: #9aa0a6; stroke-width: 1.6; stroke-dasharray: 0.6 2.2; stroke-linecap: round; }
+.room-badge { padding: 4px 10px; border-radius: 20px; font-size: 13px; font-weight: 700; white-space: nowrap; }
+.room-badge-open { background: #E6F6EA; color: #1E7B34; }
+.room-badge-full { background: #EEEEF0; color: #555; }
+.room-group-note { font-size: 13px; color: #666; margin: 0; }
+.room-legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: #555; border-top: 1px solid #eee; padding-top: 10px; }
+.room-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.room-legend .person { width: 18px; height: 18px; }
+/* Read by screen readers, not shown. */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.room-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.room-card { background: white; border: 1px solid #e3dcf7; border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.room-card-title { font-size: 17px; font-weight: 700; color: #222; display: flex; flex-direction: column; gap: 2px; position: relative; }
+.room-card-people { font-size: 14px; font-weight: 500; color: #666; }
+.room-custom-cap-label { font-size: 14px; font-weight: 500; color: #444; display: flex; align-items: center; gap: 8px; }
+.room-custom-cap-label input { width: 70px; padding: 10px 6px; text-align: center; font-size: 18px; }
+.room-custom-remove { position: absolute; top: -4px; right: -4px; width: 44px; height: 44px; border: none; background: transparent; color: #b02a37; font-size: 18px; cursor: pointer; }
+.room-custom-error { margin: 0; font-size: 13px; color: #b02a37; min-height: 0; }
+.stepper { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.step-btn { width: 52px; height: 52px; flex: none; border-radius: 12px; border: 2px solid #9B72FF; background: #F4F0FF; color: #6b4fc4;
+    font-size: 28px; font-weight: 700; line-height: 1; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; }
+.step-btn:active { background: #E0D5FF; }
+.step-qty { font-size: 28px; font-weight: 800; color: #222; min-width: 2ch; text-align: center; }
+/* "How many are empty?" and "Spaces still open" under each card's quantity */
+.room-sub { display: flex; flex-direction: column; gap: 6px; border-top: 1px dashed #e3dcf7; padding-top: 10px; }
+.room-sub[hidden] { display: none; }
+.room-sub-label { font-size: 13px; font-weight: 600; color: #444; }
+.stepper-small .step-btn { width: 44px; height: 44px; font-size: 22px; }
+.step-open, .step-vacant { font-size: 17px; font-weight: 700; color: #333; text-align: center; flex: 1; }
+.room-add { margin-top: 12px; min-height: 48px; padding: 0 16px; border-radius: 12px; border: 2px dashed #9B72FF; background: white; color: #6b4fc4;
+    font-weight: 700; font-size: 15px; font-family: inherit; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; }
+.rooms-summary { margin-top: 14px; font-size: 16px; color: #333; display: flex; flex-direction: column; gap: 4px; }
+.rooms-footer-item { white-space: nowrap; } /* "Places available: 4" never splits across lines */
+@media (max-width: 480px) { .room-cards { grid-template-columns: 1fr; } }

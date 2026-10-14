@@ -163,7 +163,7 @@ const STUDENT_VERIFICATION_KEY = 'eboard_student_verification_v1';
 // Bump this when the consent notice's content meaningfully changes -- each
 // upload records the version in force at the time, on the doc record
 // itself (see uploadStudentVerificationDoc()), not a separate log.
-const STUDENT_ID_CONSENT_VERSION = 'v1';
+const STUDENT_ID_CONSENT_VERSION = 'v2'; // v2 (2026-10-14): notice now says front AND back are collected
 
 // Singleton student profile (school + whatever else the student sets about
 // themselves), mirrors landownerProfile's pattern -- own key/version track,
@@ -204,58 +204,109 @@ const HOUSE_RULES = [
 
 /* ---- ROOM TYPES ----
    A listing's rooms are a list of types, each "count rooms that sleep
-   capacity people": [{ capacity: 1, count: 2 }, { capacity: 2, count: 3 }]
-   is 2 solo rooms + 3 doubles. Replaces the single roomCapacity number
-   (13 Oct), which assumed every room in a house is the same size --
-   Legazpi boarding houses mostly aren't. `total` (rooms) and `available`
-   (vacant rooms) are separate fields and unchanged; per-room vacancy is
-   a later phase. Sum of counts may not exceed `total` (see roomsError). */
+   capacity people, `vacant` of which are completely empty":
+   [{ capacity: 1, count: 2, vacant: 1 }, { capacity: 2, count: 3, vacant: 0 }]
+   is 2 solo rooms (1 empty) + 3 doubles (none empty). Replaces the single
+   roomCapacity number (13 Oct), which assumed every room in a house is the
+   same size -- Legazpi boarding houses mostly aren't.
+   `total` and `available` are DERIVED from this list on save (2026-10-15):
+   total = sum of count, available = sum of vacant. `available` keeps its
+   meaning -- fully empty rooms -- so the directory cards, the
+   vacancies-only filter and the admin console read it unchanged. */
 const MAX_ROOM_CAPACITY = 12; // sanity cap on people per room, not a policy
 
-// { rooms: number of rooms, boarders: beds across them }
+// { rooms: number of rooms, vacant: completely empty rooms, boarders: beds across them }
 function roomTotals(rooms) {
-    return (rooms || []).reduce((t, r) => ({ rooms: t.rooms + r.count, boarders: t.boarders + r.count * r.capacity }),
-        { rooms: 0, boarders: 0 });
+    return (rooms || []).reduce((t, r) => ({ rooms: t.rooms + r.count, vacant: t.vacant + (r.vacant || 0), boarders: t.boarders + r.count * r.capacity }),
+        { rooms: 0, vacant: 0, boarders: 0 });
 }
 
-/* openSlots -- "spaces still open" in a SHARED room type (capacity >= 2):
-   how many more boarders it can take. DISPLAY-ONLY: nothing reads it but
-   the details page and the form. `available` (vacant rooms) and `total`
-   (rooms) keep their meaning, and the cards, the vacancies-only and
-   max-boarders filters and the admin console never look at it. Absent
-   means "not stated" -- never defaulted to 0, which would read as full.
-   Two numbers now describe availability and a landowner could update
-   them inconsistently; that is accepted and disclosed, not reconciled. */
-function openSlotsText(n) {
-    return n === 0 ? 'no spaces still open' : `${n} space${n === 1 ? '' : 's'} still open`;
+/* openSlots -- "spaces still open": free places in the rooms of a SHARED
+   type (capacity >= 2) that are NOT empty. (Until 2026-10-15 it counted
+   free places across all of the type's rooms, empty ones included; the
+   start-up migration converts old values.) Every non-empty room already
+   holds at least one person, so it can be at most
+   (count - vacant) x (capacity - 1) -- maxOpenSlots(). Absent means "not
+   stated" -- never defaulted to 0, which would read as full -- and it is
+   never kept when every room of the type is empty (there are no
+   partly-filled rooms to have spaces in). */
+function maxOpenSlots(r) {
+    return Math.max(0, (r.count - r.vacant) * (r.capacity - 1));
 }
 
-// One room type, for the details page: "2 solo rooms",
-// "3 rooms for 2 — 1 space still open" (note only when stated).
+// Places a student could take in this type: every bed in its empty rooms,
+// plus the stated free places in the others. null if not stated.
+function placesOpen(r) {
+    const inEmpty = r.vacant * r.capacity;
+    if (r.capacity === 1 || r.count === r.vacant) return inEmpty;
+    return Number.isInteger(r.openSlots) ? inEmpty + r.openSlots : null;
+}
+
+// One room type, for the details page:
+//   "2 solo rooms — 1 empty"   /   "2 solo rooms — none empty"
+//   "3 rooms for 2 — 3 of 6 places open (1 room empty)"   (open spaces stated)
+//   "3 rooms for 2 — 2 of 6 places open"                  (stated, none empty)
+//   "3 rooms for 2 — 1 of 3 rooms empty"                  (not stated)
 function describeRoomType(r) {
-    const base = r.capacity === 1
-        ? `${r.count} solo room${r.count === 1 ? '' : 's'}`
-        : `${r.count} room${r.count === 1 ? '' : 's'} for ${r.capacity}`;
-    return (r.capacity >= 2 && Number.isInteger(r.openSlots)) ? `${base} — ${openSlotsText(r.openSlots)}` : base;
+    if (r.capacity === 1) return `${r.count} solo room${r.count === 1 ? '' : 's'} — ${r.vacant > 0 ? r.vacant + ' empty' : 'none empty'}`;
+    const base = `${r.count} room${r.count === 1 ? '' : 's'} for ${r.capacity}`;
+    const places = placesOpen(r);
+    if (places === null) return `${base} — ${r.vacant} of ${r.count} room${r.count === 1 ? '' : 's'} empty`;
+    const emptyNote = r.vacant > 0 ? ` (${r.vacant} room${r.vacant === 1 ? '' : 's'} empty)` : '';
+    return `${base} — ${places} of ${r.capacity * r.count} places open${emptyNote}`;
+}
+
+/* One room type as a picture, for the details page (2026-10-15): one
+   entry per room, { taken, open, unknown } places. Display only -- built
+   from count / vacant / openSlots / capacity, nothing new is stored.
+     - each of the `vacant` rooms is all open;
+     - every other room holds at least 1 person. A solo one is just taken.
+       A shared one, with open spaces stated, gets them PACKED: up to
+       capacity - 1 per room until none are left (fewest rooms shown
+       partly open). Not stated: 1 taken, the rest unknown.
+   Rooms are ordered full -> partly open -> empty, e.g. 3 doubles, 1 empty,
+   1 open: [2 taken] [1 taken, 1 open] [2 open].
+   `guessed` is true when the data can't say WHICH rooms hold the open
+   places, so the packing is one arrangement of several: rooms of 3+,
+   2+ occupied, and some but not all of their free places open. (An
+   occupied double has at most 1 free place, so doubles never guess.) */
+function roomPicture(r) {
+    const occupied = r.count - r.vacant;
+    const stated = Number.isInteger(r.openSlots);
+    const rooms = [];
+    let left = stated ? r.openSlots : 0;
+    for (let i = 0; i < occupied; i++) {
+        if (r.capacity === 1) { rooms.push({ taken: 1, open: 0, unknown: 0 }); continue; }
+        if (!stated) { rooms.push({ taken: 1, open: 0, unknown: r.capacity - 1 }); continue; }
+        const open = Math.min(left, r.capacity - 1);
+        left -= open;
+        rooms.push({ taken: r.capacity - open, open, unknown: 0 });
+    }
+    rooms.sort((a, b) => a.open - b.open); // full first, then partly open
+    for (let i = 0; i < r.vacant; i++) rooms.push({ taken: 0, open: r.capacity, unknown: 0 });
+    const guessed = r.capacity >= 3 && stated && occupied >= 2 && r.openSlots > 0 && r.openSlots < maxOpenSlots(r);
+    return { rooms, guessed };
 }
 
 // Rows for the same capacity are merged (2 doubles + 1 double = 3
-// doubles), then sorted smallest room first, so stored data has one
-// entry per size regardless of how the form was filled in. Open spaces
-// merge only if EVERY merged row stated them -- adding a stated 1 to a
-// blank would understate the real number, so that merges to "not stated".
-// Never kept for solo rooms (`available` already says whether one is free).
+// doubles; their empty rooms add up too), then sorted smallest room
+// first, so stored data has one entry per size regardless of how the
+// form was filled in. Open spaces merge only if EVERY merged row stated
+// them -- adding a stated 1 to a blank would understate the real number,
+// so that merges to "not stated". Never kept for solo rooms (`vacant`
+// already says whether one is free) or when every room is empty.
 function normalizeRooms(rows) {
     const byCapacity = new Map();
     rows.forEach(r => {
-        const m = byCapacity.get(r.capacity) || { capacity: r.capacity, count: 0, open: 0, allStated: true };
+        const m = byCapacity.get(r.capacity) || { capacity: r.capacity, count: 0, vacant: 0, open: 0, allStated: true };
         m.count += r.count;
+        m.vacant += r.vacant || 0;
         if (Number.isInteger(r.openSlots)) m.open += r.openSlots; else m.allStated = false;
         byCapacity.set(r.capacity, m);
     });
     return [...byCapacity.values()].sort((a, b) => a.capacity - b.capacity).map(m => {
-        const type = { capacity: m.capacity, count: m.count };
-        if (m.capacity >= 2 && m.allStated) type.openSlots = m.open;
+        const type = { capacity: m.capacity, count: m.count, vacant: m.vacant };
+        if (m.capacity >= 2 && m.count > m.vacant && m.allStated) type.openSlots = m.open;
         return type;
     });
 }
@@ -266,11 +317,11 @@ function normalizeRooms(rows) {
    (These used to carry a single roomCapacity; now mixed room types, which
    is the point of the change, so the demo data has to show it.) */
 const DEMO_LISTING_EXTRAS = {
-    1: { rooms: [{ capacity: 1, count: 2 }, { capacity: 2, count: 3, openSlots: 0 }], rules: { pets: 'no', smoking: 'no', cooking: 'yes', visitors: 'yes', alcohol: 'no', overnightGuests: 'no' },
+    1: { rooms: [{ capacity: 1, count: 2, vacant: 0 }, { capacity: 2, count: 3, vacant: 0, openSlots: 0 }], rules: { pets: 'no', smoking: 'no', cooking: 'yes', visitors: 'yes', alcohol: 'no', overnightGuests: 'no' },
          otherRules: 'Lights out at 11 PM. Visitors stay in the receiving area.', minStay: '1 semester', curfew: '10:00 PM' },
-    2: { rooms: [{ capacity: 1, count: 2 }, { capacity: 2, count: 1, openSlots: 1 }], rules: { pets: 'yes', smoking: 'no', cooking: 'yes', visitors: 'yes', overnightGuests: 'no' },
+    2: { rooms: [{ capacity: 1, count: 2, vacant: 1 }, { capacity: 2, count: 1, vacant: 0, openSlots: 1 }], rules: { pets: 'yes', smoking: 'no', cooking: 'yes', visitors: 'yes', overnightGuests: 'no' },
          otherRules: 'Small pets only (cats, small dogs). Owner must clean up after them.', minStay: '1 month', curfew: 'None' },
-    3: { rooms: [{ capacity: 3, count: 4, openSlots: 2 }, { capacity: 4, count: 6, openSlots: 3 }], rules: { smoking: 'no', cooking: 'no', visitors: 'no', alcohol: 'no' },
+    3: { rooms: [{ capacity: 3, count: 4, vacant: 0, openSlots: 2 }, { capacity: 4, count: 6, vacant: 3, openSlots: 0 }], rules: { smoking: 'no', cooking: 'no', visitors: 'no', alcohol: 'no' },
          otherRules: '', minStay: '1 school year', curfew: '9:00 PM' }
 };
 
@@ -438,6 +489,67 @@ houses.forEach(h => {
     delete h.roomCapacity;
 });
 
+/* Migration (2026-10-15): Total rooms is now derived from the room types
+   (the form's room cards). A listing saved when the two were separate
+   fields can disagree; make `total` the sum of its room types, and cap
+   `available` (vacant rooms) at the new total if it now exceeds it.
+   Audited, with the old and new figures. Guarded on "total != sum", so
+   it fires once. Listings with no room types are left alone. */
+houses.forEach(h => {
+    if (!Array.isArray(h.rooms)) return;
+    const sum = h.rooms.reduce((n, r) => n + (Number.isInteger(r.count) ? r.count : 0), 0);
+    if (sum === 0 || h.total === sum) return;
+    const before = { total: h.total, available: h.available };
+    h.total = sum;
+    if (h.available > sum) h.available = sum;
+    logAudit('property.total_synced', 'properties', h.id,
+        `${h.name} — Total rooms ${before.total} → ${sum} (from its room types)` +
+        (before.available !== h.available ? `; Vacant rooms ${before.available} → ${h.available}` : ''));
+});
+
+/* Migration (2026-10-15): vacancy moved onto the room types (each type
+   now records how many of its rooms are completely empty, `vacant`, and
+   `available` is their sum). The old data has only the listing-wide
+   `available` and can't say WHICH rooms were empty, so:
+     1. every type starts at vacant 0;
+     2. `available` goes on the type with the most rooms (ties: the
+        smaller room size, i.e. first in stored order); if it doesn't
+        fit, that type is filled and the rest spills onto the next-
+        largest, and so on -- `available` itself is kept exactly;
+     3. openSlots used to count free places in ALL of a type's rooms,
+        empty ones included. On a type that just received vacancy, those
+        empty rooms' beds are taken back out (old - vacant x capacity,
+        not below 0), so Places available doesn't count them twice. Then
+        every openSlots is clamped to its new maximum, and dropped where
+        every room of the type is empty.
+   Audited only when something beyond the placement changed (a spill or
+   an openSlots value). Runs after the total sync above, so available <=
+   total already holds. Guarded on "some type has no integer vacant", so
+   it fires once. */
+houses.forEach(h => {
+    if (!Array.isArray(h.rooms) || !h.rooms.length) return;
+    if (h.rooms.every(r => Number.isInteger(r.vacant))) return;
+    h.rooms.forEach(r => { r.vacant = 0; });
+    const notes = [];
+    // Largest count first; Array.prototype.sort is stable, so ties keep stored order.
+    const byCount = [...h.rooms].sort((a, b) => b.count - a.count);
+    let left = Math.max(0, h.available || 0);
+    byCount.forEach((r, i) => {
+        const put = Math.min(left, r.count);
+        r.vacant = put;
+        left -= put;
+        if (i > 0 && put > 0) notes.push(`${put} vacant placed on rooms for ${r.capacity} (did not fit on the largest type)`);
+    });
+    h.rooms.forEach(r => {
+        if (!Number.isInteger(r.openSlots)) return;
+        const old = r.openSlots;
+        if (r.capacity < 2 || r.count === r.vacant) delete r.openSlots;
+        else r.openSlots = Math.min(Math.max(0, old - r.vacant * r.capacity), maxOpenSlots(r));
+        if (r.openSlots !== old) notes.push(`spaces still open on rooms for ${r.capacity}: ${old} → ${r.openSlots ?? 'not stated'}`);
+    });
+    if (notes.length) logAudit('property.vacancy_split', 'properties', h.id, `${h.name} — ${notes.join('; ')}`);
+});
+
 /* Migration: "⚡ Electricity" was removed as an amenity (panel feedback:
    no boarding house here lacks it, so it told students nothing). Strip it
    from every saved listing. Guarded on its presence, and the checkbox is
@@ -587,6 +699,7 @@ function saveData(mutated = []) {
 }
 
 function hideAllViews() {
+    document.body.classList.remove('inbox-open');
     document.getElementById('student-view').style.display = 'none';
     document.getElementById('landowner-view').style.display = 'none';
     document.getElementById('details-view').style.display = 'none';
@@ -978,28 +1091,95 @@ async function sha256Hex(file) {
     }
 }
 
-function uploadVerificationDoc(docType, file) {
+/* ---- Two-sided ID images (2026-10-14) ----
+   Front and back are each their own upload. file_path / file_hash hold
+   the FRONT -- unchanged field names, so records saved before still
+   read correctly -- and file_path_back / file_hash_back the BACK. A
+   record saved before two-sided upload has no file_hash_back key at all:
+   that (not a null path) is how "back not provided" is told apart from
+   "back deleted", since deletion never touches the hashes. The Laravel
+   schema needs matching file_path_back / file_hash_back columns.
+   RETENTION: every deletion goes through clearIdFiles(), so neither side
+   can outlive the rule that deletes the other. */
+function idSides(doc) {
+    return [
+        { label: 'Front', path: doc.file_path, hash: doc.file_hash, notProvided: false },
+        { label: 'Back', path: doc.file_path_back, hash: doc.file_hash_back, notProvided: !('file_hash_back' in doc) }
+    ];
+}
+function hasIdFiles(doc) { return !!(doc && (doc.file_path || doc.file_path_back)); }
+function clearIdFiles(doc) { doc.file_path = null; doc.file_path_back = null; }
+// Both sides side by side, labelled; image src values are data URLs this
+// app generated (resizeAndCompress), as before. Labels are static text.
+function idThumbsHtml(doc, notRetainedText) {
+    if (!hasIdFiles(doc)) return `<p class="mod-meta" style="font-style:italic;">${notRetainedText}</p>`;
+    return `<div class="id-sides">${idSides(doc).map(s => s.path
+        ? `<figure class="id-side"><img class="verification-thumb" src="${s.path}" alt="${s.label} of ID" onclick="openImageModal('${s.path}')"><figcaption>${s.label}</figcaption></figure>`
+        : `<figure class="id-side id-side-missing"><figcaption>${s.label}: ${s.notProvided ? 'not provided (submitted before two-sided upload)' : 'not retained'}</figcaption></figure>`
+    ).join('')}</div>`;
+}
+
+/* Staged sides, before submission. Picking a file only processes it
+   (compress + hash) into this in-memory draft; nothing is saved until
+   BOTH sides are ready and Submit is pressed, so a record never holds a
+   new front with an old back. Keyed 'landowner:<docType>' / 'student:<docType>'. */
+const idDrafts = {};
+
+function stageIdSide(role, docType, side, file) {
     if (!file) return;
     Promise.all([resizeAndCompress(file), sha256Hex(file)]).then(([dataUrl, hash]) => {
-        const now = new Date().toISOString();
-        reloadVerificationDocs();
-        let doc = verificationDocs.find(d => d.user_id === LANDOWNER_ID && d.document_type === docType);
-        if (doc) {
-            Object.assign(doc, {
-                file_path: dataUrl, file_hash: hash, status: 'pending',
-                reviewed_by: null, reviewed_at: null, remarks: null, checklist: null, submitted_at: now
-            });
-        } else {
-            verificationDocs.push({
-                id: Date.now(), user_id: LANDOWNER_ID, document_type: docType,
-                file_path: dataUrl, file_hash: hash, status: 'pending', reviewed_by: null, reviewed_at: null,
-                remarks: null, checklist: null, submitted_at: now
-            });
-        }
-        syncVerificationTier(); // also reloads+updates houses & landownerProfile, see its own comment
-        saveData(['verificationDocs', 'houses', 'landownerProfile']);
-        renderAll();
+        const key = `${role}:${docType}`;
+        idDrafts[key] = idDrafts[key] || {};
+        idDrafts[key][side] = { dataUrl, hash };
+        refreshIdDraftUi(role, docType);
     });
+}
+
+// Ready mark + small preview per side; Submit enabled only with both sides
+// (and, for a student, the consent box ticked -- see updateStudentIdConsentGate()).
+function refreshIdDraftUi(role, docType) {
+    const draft = idDrafts[`${role}:${docType}`] || {};
+    ['front', 'back'].forEach(side => {
+        const mark = document.getElementById(`${role}-${docType}-${side}-ready`);
+        if (mark) mark.innerHTML = draft[side]
+            ? `<img class="id-draft-thumb" src="${draft[side].dataUrl}" alt=""> ✓ ready` : '';
+    });
+    const btn = document.getElementById(`${role}-${docType}-submit`);
+    if (!btn) return;
+    const consentOk = role !== 'student' || !!document.getElementById('student-id-consent-checkbox')?.checked;
+    btn.disabled = !(draft.front && draft.back && consentOk);
+}
+
+// The two inputs + Submit, shared by the landowner card and the student panel.
+function idUploadControlsHtml(role, docType, disabled) {
+    const input = side => `
+        <label class="id-upload-side">${side === 'front' ? 'Front of ID' : 'Back of ID'}
+            <input type="file" accept="image/*" id="${role}-${docType}-${side}-input" ${disabled ? 'disabled' : ''}
+                onchange="stageIdSide('${role}', '${docType}', '${side}', this.files[0])">
+            <span class="id-upload-ready" id="${role}-${docType}-${side}-ready"></span>
+        </label>`;
+    return `<div class="id-upload">${input('front')}${input('back')}
+        <button type="button" class="btn-approve" id="${role}-${docType}-submit" disabled
+            onclick="${role === 'student' ? 'submitStudentId()' : `submitLandownerId('${docType}')`}">Submit both sides for review</button></div>`;
+}
+
+function submitLandownerId(docType) {
+    const draft = idDrafts[`landowner:${docType}`];
+    if (!draft || !draft.front || !draft.back) return alert('Please add both the front and the back of your ID.');
+    const now = new Date().toISOString();
+    reloadVerificationDocs();
+    const sides = { file_path: draft.front.dataUrl, file_hash: draft.front.hash, file_path_back: draft.back.dataUrl, file_hash_back: draft.back.hash };
+    let doc = verificationDocs.find(d => d.user_id === LANDOWNER_ID && d.document_type === docType);
+    if (doc) {
+        Object.assign(doc, sides, { status: 'pending', reviewed_by: null, reviewed_at: null, remarks: null, checklist: null, submitted_at: now });
+    } else {
+        verificationDocs.push({ id: Date.now(), user_id: LANDOWNER_ID, document_type: docType, ...sides,
+            status: 'pending', reviewed_by: null, reviewed_at: null, remarks: null, checklist: null, submitted_at: now });
+    }
+    delete idDrafts[`landowner:${docType}`];
+    syncVerificationTier(); // also reloads+updates houses & landownerProfile, see its own comment
+    saveData(['verificationDocs', 'houses', 'landownerProfile']);
+    renderAll();
 }
 
 /* Client-only app, no server/cron -- purging a rejected document's file
@@ -1019,11 +1199,11 @@ function purgeExpiredRejectedDocs() {
     const windowMs = REJECTED_DOC_RETENTION_DAYS * 24 * 60 * 60 * 1000;
     let purged = false;
     verificationDocs.forEach(d => {
-        if (d.status === 'rejected' && d.file_path && (Date.now() - new Date(d.reviewed_at).getTime()) > windowMs) {
-            d.file_path = null;
+        if (d.status === 'rejected' && hasIdFiles(d) && (Date.now() - new Date(d.reviewed_at).getTime()) > windowMs) {
+            clearIdFiles(d);
             purged = true;
             logAudit('document.file_purged', 'verification_documents', d.id,
-                `${DOCUMENT_TYPES.find(t => t.key === d.document_type)?.label || d.document_type} — rejected document deleted after ${REJECTED_DOC_RETENTION_DAYS}-day retention window`);
+                `${DOCUMENT_TYPES.find(t => t.key === d.document_type)?.label || d.document_type} — rejected document (front and back) deleted after ${REJECTED_DOC_RETENTION_DAYS}-day retention window`);
         }
     });
     if (purged) saveData(['verificationDocs', 'auditLogs']);
@@ -1118,9 +1298,7 @@ function renderVerificationSection() {
         // window) the file itself has been deleted -- only the decision
         // record remains, so the thumbnail is replaced with that fact
         // rather than a broken <img src="null">.
-        const thumb = doc && doc.file_path
-            ? `<img class="verification-thumb" src="${doc.file_path}" onclick="openImageModal('${doc.file_path}')">`
-            : (doc ? `<p class="mod-meta" style="font-style:italic;">Reviewed — document not retained.</p>` : '');
+        const thumb = doc ? idThumbsHtml(doc, 'Reviewed — document not retained.') : '';
         const remarks = (status === 'rejected' && doc.remarks)
             ? `<p class="mod-meta" style="color:#b02a37;">Reason: ${escapeHtml(doc.remarks)}</p>` : '';
 
@@ -1133,10 +1311,11 @@ function renderVerificationSection() {
                     ${remarks}
                 </div>
                 <div class="verification-upload-row">
-                    <input type="file" accept="image/*" onchange="uploadVerificationDoc('${t.key}', this.files[0])">
+                    ${idUploadControlsHtml('landowner', t.key, false)}
                 </div>
             </div>`;
     }).join('');
+    DOCUMENT_TYPES.forEach(t => refreshIdDraftUi('landowner', t.key)); // keep any staged sides across re-renders
 }
 
 /* ---- STUDENT VERIFICATION (school ID review) ----
@@ -1165,36 +1344,31 @@ function isStudentVerified() {
    (#student-id-file-input, see renderStudentVerificationSection() below)
    is the UI-level gate; this check is the actual enforcement, in case
    that's ever bypassed. */
-function uploadStudentVerificationDoc(file) {
-    if (!file) return;
+function submitStudentId() {
     if (!document.getElementById('student-id-consent-checkbox')?.checked) {
         alert('Please read the notice and check the consent box before uploading.');
         return;
     }
+    const draft = idDrafts['student:school_id'];
+    if (!draft || !draft.front || !draft.back) return alert('Please add both the front and the back of your school ID.');
     const consent = { version: STUDENT_ID_CONSENT_VERSION, agreedAt: new Date().toISOString() };
-    Promise.all([resizeAndCompress(file), sha256Hex(file)]).then(([dataUrl, hash]) => {
-        const now = new Date().toISOString();
-        reloadStudentVerificationDocs();
-        let doc = studentVerificationDocs.find(d => d.user_id === STUDENT_ID && d.document_type === 'school_id');
-        if (doc) {
-            Object.assign(doc, {
-                file_path: dataUrl, file_hash: hash, status: 'pending',
-                reviewed_by: null, reviewed_at: null, remarks: null, checklist: null, submitted_at: now, consent
-            });
-        } else {
-            doc = {
-                id: Date.now(), user_id: STUDENT_ID, document_type: 'school_id',
-                file_path: dataUrl, file_hash: hash, status: 'pending', reviewed_by: null, reviewed_at: null,
-                remarks: null, checklist: null, submitted_at: now, consent
-            };
-            studentVerificationDocs.push(doc);
-        }
-        logAudit('student_document.consent_recorded', 'student_verification_documents', doc.id,
-            `School ID upload consent recorded (notice ${consent.version})`);
-        saveData(['studentVerificationDocs', 'auditLogs']);
-        renderAll();
-        renderMyStudentVerificationPanel(); // rebuilds the notice block too, resetting the checkbox
-    });
+    const now = new Date().toISOString();
+    reloadStudentVerificationDocs();
+    const sides = { file_path: draft.front.dataUrl, file_hash: draft.front.hash, file_path_back: draft.back.dataUrl, file_hash_back: draft.back.hash };
+    let doc = studentVerificationDocs.find(d => d.user_id === STUDENT_ID && d.document_type === 'school_id');
+    if (doc) {
+        Object.assign(doc, sides, { status: 'pending', reviewed_by: null, reviewed_at: null, remarks: null, checklist: null, submitted_at: now, consent });
+    } else {
+        doc = { id: Date.now(), user_id: STUDENT_ID, document_type: 'school_id', ...sides,
+            status: 'pending', reviewed_by: null, reviewed_at: null, remarks: null, checklist: null, submitted_at: now, consent };
+        studentVerificationDocs.push(doc);
+    }
+    delete idDrafts['student:school_id'];
+    logAudit('student_document.consent_recorded', 'student_verification_documents', doc.id,
+        `School ID (front and back) upload consent recorded (notice ${consent.version})`);
+    saveData(['studentVerificationDocs', 'auditLogs']);
+    renderAll();
+    renderMyStudentVerificationPanel(); // rebuilds the notice block too, resetting the checkbox
 }
 
 /* Self-service withdrawal -- "at any time," per the student-facing notice.
@@ -1209,7 +1383,7 @@ function uploadStudentVerificationDoc(file) {
 function removeMyStudentVerificationDoc() {
     reloadStudentVerificationDocs();
     const doc = studentVerificationDocs.find(d => d.user_id === STUDENT_ID && d.document_type === 'school_id');
-    if (!doc || !doc.file_path) return;
+    if (!doc || !hasIdFiles(doc)) return;
 
     if (doc.status === 'pending') {
         if (!confirm("Withdraw your uploaded school ID? Since it hasn't been reviewed yet, this removes your submission entirely -- you can upload again anytime.")) return;
@@ -1217,10 +1391,10 @@ function removeMyStudentVerificationDoc() {
         logAudit('student_document.withdrawn', 'student_verification_documents', doc.id,
             `${STUDENT_DOCUMENT_TYPES[0].label} — withdrawn by student before review`);
     } else {
-        if (!confirm('Remove your uploaded school ID photo? Landowners will no longer be able to see it. The review decision on your account is kept.')) return;
-        doc.file_path = null;
+        if (!confirm('Remove your uploaded school ID photos (front and back)? Landowners will no longer be able to see them. The review decision on your account is kept.')) return;
+        clearIdFiles(doc);
         logAudit('student_document.removed_by_student', 'student_verification_documents', doc.id,
-            `${STUDENT_DOCUMENT_TYPES[0].label} — photo removed by student; ${doc.status} decision and hash retained`);
+            `${STUDENT_DOCUMENT_TYPES[0].label} — front and back removed by student; ${doc.status} decision and hashes retained`);
     }
     saveData(['studentVerificationDocs', 'auditLogs']);
     renderAll();
@@ -1234,11 +1408,11 @@ function purgeExpiredRejectedStudentDocs() {
     const windowMs = REJECTED_DOC_RETENTION_DAYS * 24 * 60 * 60 * 1000;
     let purged = false;
     studentVerificationDocs.forEach(d => {
-        if (d.status === 'rejected' && d.file_path && (Date.now() - new Date(d.reviewed_at).getTime()) > windowMs) {
-            d.file_path = null;
+        if (d.status === 'rejected' && hasIdFiles(d) && (Date.now() - new Date(d.reviewed_at).getTime()) > windowMs) {
+            clearIdFiles(d);
             purged = true;
             logAudit('document.file_purged', 'student_verification_documents', d.id,
-                `${STUDENT_DOCUMENT_TYPES.find(t => t.key === d.document_type)?.label || d.document_type} — rejected document deleted after ${REJECTED_DOC_RETENTION_DAYS}-day retention window`);
+                `${STUDENT_DOCUMENT_TYPES.find(t => t.key === d.document_type)?.label || d.document_type} — rejected document (front and back) deleted after ${REJECTED_DOC_RETENTION_DAYS}-day retention window`);
         }
     });
     if (purged) saveData(['studentVerificationDocs', 'auditLogs']);
@@ -1255,14 +1429,12 @@ function renderStudentVerificationSection() {
         const pillClass = { none: 'pill-pending', pending: 'pill-pending', approved: 'pill-ok', rejected: 'pill-bad' }[status];
         const pillLabel = { none: 'Not submitted', pending: 'Pending Review', approved: 'Approved', rejected: 'Rejected' }[status];
 
-        const thumb = doc && doc.file_path
-            ? `<img class="verification-thumb" src="${doc.file_path}" onclick="openImageModal('${doc.file_path}')">`
-            : (doc ? `<p class="mod-meta" style="font-style:italic;">Reviewed — document not retained.</p>` : '');
+        const thumb = doc ? idThumbsHtml(doc, 'Reviewed — document not retained.') : '';
         const remarks = (status === 'rejected' && doc.remarks)
             ? `<p class="mod-meta" style="color:#b02a37;">Reason: ${escapeHtml(doc.remarks)}</p>` : '';
         // "At any time," per the notice above -- available whenever there's
         // an actual image to take down, regardless of status.
-        const removeBtn = (doc && doc.file_path)
+        const removeBtn = hasIdFiles(doc)
             ? `<button class="btn-reject" style="margin-top:10px;" onclick="removeMyStudentVerificationDoc()">Remove My School ID</button>` : '';
 
         return `
@@ -1275,10 +1447,11 @@ function renderStudentVerificationSection() {
                     ${removeBtn}
                 </div>
                 <div class="verification-upload-row">
-                    <input type="file" id="student-id-file-input" accept="image/*" disabled onchange="uploadStudentVerificationDoc(this.files[0])">
+                    ${idUploadControlsHtml('student', t.key, !document.getElementById('student-id-consent-checkbox')?.checked)}
                 </div>
             </div>`;
     }).join('');
+    refreshIdDraftUi('student', 'school_id'); // keep any staged sides across re-renders
 }
 
 // ---- SCHEDULE VISIT LOGIC ----
@@ -1315,8 +1488,19 @@ function updateMessageBadge() {
     badge.style.display = unread > 0 ? 'inline-block' : 'none';
 }
 
+/* Where "<" on the phone's full-screen conversation list returns to: the
+   listing the student came from, or the directory. Recorded only when the
+   list is opened from OUTSIDE it, so coming back from a thread (which
+   reopens the list) doesn't overwrite it. */
+let viewBeforeInbox = null;
+
 function openInbox() {
+    if (document.getElementById('messages-view').style.display !== 'block') {
+        const onDetails = document.getElementById('details-view').style.display === 'block';
+        viewBeforeInbox = onDetails && currentPropertyId ? { view: 'details', propertyId: currentPropertyId } : { view: 'home' };
+    }
     hideAllViews();
+    document.body.classList.add('inbox-open');
     currentPropertyContext = null;
     destroyDetailsMap();
     document.getElementById('messages-view').style.display = 'block';
@@ -1464,6 +1648,8 @@ function openChat(convId) {
     }
 
     document.getElementById('chat-overlay').style.display = 'flex';
+    document.body.classList.add('chat-open');
+    syncChatToViewport();
 
     // Opening a thread is what marks the other side's messages read --
     // flips the flag, then refreshes the header badge AND re-renders the
@@ -1480,7 +1666,58 @@ function openChat(convId) {
     updateMessageBadge();
 }
 
-function closeChat() { document.getElementById('chat-overlay').style.display = 'none'; }
+function closeChat() {
+    document.getElementById('chat-overlay').style.display = 'none';
+    document.body.classList.remove('chat-open');
+}
+
+// Phone thread "<": back to the conversation list.
+function chatBackToList() {
+    closeChat();
+    openInbox();
+}
+
+// Phone list "<": back to wherever the list was opened from.
+function closeInbox() {
+    const back = viewBeforeInbox;
+    viewBeforeInbox = null;
+    if (back && back.view === 'details' && houses.some(h => h.id === back.propertyId)) openDetails(back.propertyId);
+    else goHome();
+}
+
+/* Keep a full-screen phone thread inside the VISIBLE viewport, so the
+   message input sits on top of the on-screen keyboard. iOS Safari
+   doesn't shrink the page for the keyboard -- visualViewport reports
+   what's actually visible, so the thread's height/top follow it (CSS
+   vars read by the 700px .chat-window rule). Not a phone layout, or no
+   visualViewport (old browsers): clear them and fall back to 100dvh. */
+const PHONE_LAYOUT = window.matchMedia('(max-width: 700px)');
+function syncChatToViewport() {
+    const el = document.getElementById('chat-overlay');
+    const vv = window.visualViewport;
+    if (!vv || !PHONE_LAYOUT.matches || el.style.display === 'none') {
+        el.style.removeProperty('--vv-h'); el.style.removeProperty('--vv-top');
+        return;
+    }
+    el.style.setProperty('--vv-h', vv.height + 'px');
+    el.style.setProperty('--vv-top', vv.offsetTop + 'px');
+}
+if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', syncChatToViewport);
+    window.visualViewport.addEventListener('scroll', syncChatToViewport);
+}
+
+/* --header-h: the header's real height, for #details-view's top/height
+   (style.css). It isn't a constant -- it changes with screen width, and
+   between guest and signed-in header contents -- so it's measured, and
+   re-measured whenever the header resizes. Skipped while the header is
+   hidden (height 0, e.g. on the sign-in screen); the CSS fallback is 70px. */
+function syncHeaderHeight() {
+    const h = document.querySelector('.main-header').getBoundingClientRect().height;
+    if (h > 0) document.documentElement.style.setProperty('--header-h', h + 'px');
+}
+if (window.ResizeObserver) new ResizeObserver(syncHeaderHeight).observe(document.querySelector('.main-header'));
+window.addEventListener('resize', syncHeaderHeight);
 
 function renderChatHistory(convId) {
     const body = document.getElementById('chat-body'); body.innerHTML = '';
@@ -1828,14 +2065,52 @@ function renderRulesSection(h) {
 
     document.getElementById('details-rules-section').innerHTML = `
         <h3 style="margin-bottom: 20px; font-size: 22px;">Rooms &amp; House Rules</h3>
+        <div class="rules-fact rooms-picture"><span class="rules-fact-label">Rooms</span>${h.rooms && h.rooms.length ? roomsPictureHtml(h.rooms) : `<span class="rules-fact-value">${notSpecified}</span>`}</div>
         <div class="rules-facts">
-            <div class="rules-fact"><span class="rules-fact-label">Rooms</span><span class="rules-fact-value">${h.rooms && h.rooms.length ? h.rooms.map(r => `<span class="room-type-line">${escapeHtml(describeRoomType(r))}</span>`).join('') : notSpecified}</span></div>
             <div class="rules-fact"><span class="rules-fact-label">Minimum stay</span><span class="rules-fact-value">${text(h.minStay)}</span></div>
             <div class="rules-fact"><span class="rules-fact-label">Curfew</span><span class="rules-fact-value">${text(h.curfew)}</span></div>
         </div>
         <div class="rules-group"><p class="rules-group-label">Allowed</p><div class="rule-chips">${allowed || notSpecified}</div></div>
         <div class="rules-group"><p class="rules-group-label">Not allowed</p><div class="rule-chips">${notAllowed || notSpecified}</div></div>
         ${h.otherRules && h.otherRules.trim() ? `<div class="rules-group"><p class="rules-group-label">Other rules</p><p class="rules-other">${escapeHtml(h.otherRules.trim())}</p></div>` : ''}`;
+}
+
+// One person icon (head + shoulders), inline SVG -- no icon library.
+// kind: 'taken' (solid grey), 'open' (dashed green outline) or
+// 'unknown' (dotted light grey: open spaces not stated).
+const PERSON_ICON = kind => `<svg class="person person-${kind}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">` +
+    `<circle cx="12" cy="7" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8z"/></svg>`;
+
+/* The Rooms picture (2026-10-15): per room type, a heading, one box of
+   person icons per room (roomPicture()), and a badge; a legend under all
+   of them. The icons are aria-hidden -- each group carries the same facts
+   as text, describeRoomType(), for screen readers. Every value that comes
+   from the record goes through escapeHtml. */
+function roomsPictureHtml(rooms) {
+    let anyUnknown = false;
+    const groups = rooms.map(r => {
+        const { rooms: boxes, guessed } = roomPicture(r);
+        const places = placesOpen(r);
+        const knownOpen = r.vacant * r.capacity; // when not stated: the empty rooms' places
+        const badge = places === 0 ? '<span class="room-badge room-badge-full">Full</span>'
+            : places !== null ? `<span class="room-badge room-badge-open">${escapeHtml(places)} open</span>`
+            : knownOpen > 0 ? `<span class="room-badge room-badge-open">At least ${escapeHtml(knownOpen)} open</span>`
+            : '<span class="room-badge room-badge-full">Open places not stated</span>';
+        const boxHtml = boxes.map(b => {
+            if (b.unknown) anyUnknown = true;
+            return `<span class="room-box">${PERSON_ICON('taken').repeat(b.taken)}${PERSON_ICON('open').repeat(b.open)}${PERSON_ICON('unknown').repeat(b.unknown)}</span>`;
+        }).join('');
+        return `<div class="room-group">
+            <p class="room-group-title">${escapeHtml(roomsPhrase(r.capacity, r.count))}</p>
+            <span class="sr-only">${escapeHtml(describeRoomType(r))}</span>
+            <div class="room-group-rooms" aria-hidden="true">${boxHtml}${badge}</div>
+            ${guessed ? '<p class="room-group-note">Which rooms have the open places isn\'t recorded.</p>' : ''}
+        </div>`;
+    }).join('');
+    const legend = `<div class="room-legend" aria-hidden="true">
+        <span>${PERSON_ICON('taken')} Taken</span><span>${PERSON_ICON('open')} Open</span>
+        ${anyUnknown ? `<span>${PERSON_ICON('unknown')} Not stated</span>` : ''}</div>`;
+    return groups + legend;
 }
 
 /* BUG (fixed 2026-10-13): map creation is deferred 200 ms (below), and
@@ -2056,7 +2331,7 @@ function readListingExtras(prefix) {
         if (v) rules[r.key] = v; // "Not set" stores nothing, same as an old listing
     });
     return {
-        rooms: readRoomRows(prefix),
+        rooms: readRoomCards(prefix).rows,
         rules,
         otherRules: document.getElementById(prefix + '-other-rules').value.trim(),
         minStay: document.getElementById(prefix + '-min-stay').value.trim(),
@@ -2065,7 +2340,7 @@ function readListingExtras(prefix) {
 }
 
 function fillListingExtras(prefix, h) {
-    renderRoomRows(prefix, h.rooms);
+    renderRoomCards(prefix, h.rooms);
     HOUSE_RULES.forEach(r => {
         const v = h.rules?.[r.key] || '';
         const radio = document.querySelector(`input[name="${prefix}-rule-${r.key}"][value="${v}"]`);
@@ -2076,110 +2351,222 @@ function fillListingExtras(prefix, h) {
     document.getElementById(prefix + '-curfew').value = h.curfew || '';
 }
 
-/* ---- Room-type rows (listing form) ----
-   "[count] rooms for [capacity] people", one row per room type, at least
-   one row. Read raw (parseInt, may be NaN) so roomsError() can say what's
-   wrong; normalizeRooms() runs only on valid input, at save time.
-   Shared types (capacity >= 2) also get an optional "[n] spaces still
-   open" field (see openSlotsText); updateRoomsSummary() shows/hides it. */
-function roomRowHtml(count, capacity, openSlots) {
-    return `<div class="room-row">
-        <input type="number" class="room-count" min="1" value="${escapeHtml(count ?? '')}" aria-label="Number of rooms" oninput="updateRoomsSummary(this)">
-        <span class="room-word">rooms for</span>
-        <input type="number" class="room-capacity" min="1" max="${MAX_ROOM_CAPACITY}" value="${escapeHtml(capacity ?? '')}" aria-label="People per room" oninput="updateRoomsSummary(this)">
-        <span class="room-people">people</span>
-        <button type="button" class="room-remove" onclick="removeRoomRow(this)" aria-label="Remove this room type">✕</button>
-        <span class="room-open">
-            <span class="room-open-sep" aria-hidden="true">·</span>
-            <input type="number" class="room-open-count" min="0" value="${escapeHtml(openSlots ?? '')}" aria-label="Spaces still open (optional)" oninput="updateRoomsSummary(this)">
-            <span class="room-open-word">spaces still open</span>
-        </span>
+/* ---- Room-type CARDS (listing form, 2026-10-15) ----
+   Replaces typed "[n] rooms for [c] people" rows: most landowners here
+   are older, and paired number boxes confused them. Each kind of room is
+   a card with large +/- steppers for how many rooms there are, a second
+   stepper for how many of those are completely empty, and -- shared
+   rooms only -- "Spaces still open" in the rooms that are NOT empty.
+   Total rooms and Vacant rooms are both DERIVED from the cards (no
+   separate inputs -- they could disagree with the room types). Stored as
+   rooms: [{ capacity, count, vacant, openSlots? }]; a card at quantity 0
+   isn't stored. Plain event handlers recompute the footer; no framework. */
+const ROOM_PRESETS = [
+    { capacity: 1, label: 'Single Room', people: '1 person', word: 'single room' },
+    { capacity: 2, label: 'Double Room', people: '2 people', word: 'double room' },
+    { capacity: 4, label: 'Bedspace / Quad Room', people: '4 people', word: 'quad room' }
+];
+const MAX_ROOM_QTY = 99;
+const PRESET_NAME = { 1: 'Single', 2: 'Double', 4: 'Quad' };
+
+// Custom sizes are those no preset covers: 3, or 5..MAX_ROOM_CAPACITY.
+function validCustomCapacity(c) {
+    return Number.isInteger(c) && c >= 3 && c <= MAX_ROOM_CAPACITY && !PRESET_NAME[c];
+}
+
+// "3 double rooms" / "1 room for 3" -- for messages.
+function roomsPhrase(capacity, n) {
+    const preset = ROOM_PRESETS.find(p => p.capacity === capacity);
+    return preset ? `${n} ${preset.word}${n === 1 ? '' : 's'}` : `${n} room${n === 1 ? '' : 's'} for ${capacity}`;
+}
+
+function stepperHtml(cls, value, display, lessLabel, moreLabel, onStep) {
+    return `<div class="stepper ${cls === 'step-qty' ? '' : 'stepper-small'}">
+        <button type="button" class="step-btn" aria-label="${lessLabel}" onclick="${onStep}(this, -1)">−</button>
+        <output class="${cls}" data-value="${escapeHtml(value)}" aria-live="polite">${escapeHtml(display)}</output>
+        <button type="button" class="step-btn" aria-label="${moreLabel}" onclick="${onStep}(this, 1)">+</button>
     </div>`;
 }
 
-function renderRoomRows(prefix, rooms) {
-    const list = document.getElementById(prefix + '-room-rows');
-    const rows = (rooms && rooms.length) ? rooms : [{ count: '', capacity: '' }];
-    list.innerHTML = rows.map(r => roomRowHtml(r.count, r.capacity, r.openSlots)).join('');
-    updateRoomsSummary(list);
+// One card. Every label is a fixed string; numbers go through escapeHtml
+// like everything else rendered.
+function roomCardHtml({ capacity, count = 0, vacant = 0, openSlots, custom = false }) {
+    const preset = !custom && ROOM_PRESETS.find(p => p.capacity === capacity);
+    const word = preset ? preset.word : 'room of this size';
+    const title = preset
+        ? `<div class="room-card-title">${preset.label}<span class="room-card-people">${preset.people}</span></div>`
+        : `<div class="room-card-title">Custom room size
+               <label class="room-custom-cap-label"><input type="number" class="room-custom-cap" min="3" max="${MAX_ROOM_CAPACITY}"
+                   value="${escapeHtml(capacity ?? '')}" aria-label="People per room" oninput="updateRoomsFooter(this)"> people per room</label>
+               <button type="button" class="room-custom-remove" aria-label="Remove this custom room size" onclick="removeCustomRoomCard(this)">✕</button>
+           </div>
+           <p class="room-custom-error" aria-live="polite"></p>`;
+    const open = Number.isInteger(openSlots) ? openSlots : '';
+    return `<div class="room-card" data-capacity="${escapeHtml(capacity ?? '')}" ${custom ? 'data-custom="1"' : ''}>
+        ${title}
+        ${stepperHtml('step-qty', count, count, `One fewer ${word}`, `One more ${word}`, 'stepRoom')}
+        <div class="room-sub room-vacant" hidden>
+            <span class="room-sub-label">How many are empty?</span>
+            ${stepperHtml('step-vacant', vacant, vacant, `One fewer empty ${word}`, `One more empty ${word}`, 'stepVacant')}
+        </div>
+        <div class="room-sub room-open" hidden>
+            <span class="room-sub-label">Spaces still open</span>
+            ${stepperHtml('step-open', open, open === '' ? 'Not stated' : open, 'One fewer open space', 'One more open space', 'stepOpenSlots')}
+        </div>
+    </div>`;
 }
 
-function addRoomRow(prefix) {
-    const list = document.getElementById(prefix + '-room-rows');
-    list.insertAdjacentHTML('beforeend', roomRowHtml('', ''));
-    updateRoomsSummary(list);
-    list.lastElementChild.querySelector('.room-count').focus();
-}
-
-function removeRoomRow(btn) {
-    const list = btn.closest('.room-rows');
-    if (list.children.length > 1) btn.closest('.room-row').remove();
-    updateRoomsSummary(list);
-}
-
-// openSlots: undefined when blank ("not stated") or when the type is a
-// solo room (its field is hidden and ignored); otherwise parseInt, so a
-// bad value reaches roomsError() as NaN rather than being dropped.
-function readRoomRows(prefix) {
-    return [...document.querySelectorAll(`#${prefix}-room-rows .room-row`)].map(row => {
-        const capacity = parseInt(row.querySelector('.room-capacity').value);
-        const openRaw = row.querySelector('.room-open-count').value.trim();
-        return {
-            count: parseInt(row.querySelector('.room-count').value),
-            capacity,
-            openSlots: (capacity >= 2 && openRaw !== '') ? Number(openRaw) : undefined
-        };
+// Presets first, filled from the matching capacity; any other capacity
+// (an existing listing's 3, 5, ...) becomes a custom card.
+function renderRoomCards(prefix, rooms) {
+    const list = document.getElementById(prefix + '-room-cards');
+    const byCapacity = new Map((rooms || []).map(r => [r.capacity, r]));
+    const presetCards = ROOM_PRESETS.map(p => {
+        const r = byCapacity.get(p.capacity);
+        return roomCardHtml({ capacity: p.capacity, count: r?.count || 0, vacant: r?.vacant || 0, openSlots: r?.openSlots });
     });
+    const customCards = (rooms || []).filter(r => !PRESET_NAME[r.capacity]).map(r => roomCardHtml({ ...r, custom: true }));
+    list.innerHTML = presetCards.join('') + customCards.join('');
+    updateRoomsFooter(list);
 }
 
-// Re-labels each row ("1 room for 1 person" / "3 rooms for 2 people"),
-// disables the remove button on the last row, and refreshes the
-// "5 rooms, 8 boarders" line -- red when the room types add up to more
-// than Total rooms. `el` is anything inside the form (a row input, the
-// row list, or the Total rooms input), so one handler serves every caller.
-function updateRoomsSummary(el) {
-    const prefix = (el.closest('form').id === 'edit-listing-form') ? 'edit' : 'add';
-    const list = document.getElementById(prefix + '-room-rows');
-    list.querySelectorAll('.room-row').forEach(row => {
-        const count = parseInt(row.querySelector('.room-count').value);
-        const cap = parseInt(row.querySelector('.room-capacity').value);
-        row.querySelector('.room-word').innerText = count === 1 ? 'room for' : 'rooms for';
-        row.querySelector('.room-people').innerText = cap === 1 ? 'person' : 'people';
-        // Open spaces only for shared rooms -- a solo room is vacant or not,
-        // and `available` already says that.
-        row.querySelector('.room-open').hidden = !(cap >= 2);
-        const open = parseInt(row.querySelector('.room-open-count').value);
-        row.querySelector('.room-open-word').innerText = open === 1 ? 'space still open' : 'spaces still open';
-    });
-    const onlyOne = list.children.length <= 1;
-    list.querySelectorAll('.room-remove').forEach(b => { b.disabled = onlyOne; });
-
-    const valid = readRoomRows(prefix).filter(r => r.count >= 1 && r.capacity >= 1);
-    const t = roomTotals(valid);
-    const total = parseInt(document.getElementById(prefix + '-total').value);
-    const summary = document.getElementById(prefix + '-rooms-summary');
-    summary.innerText = `${t.rooms} room${t.rooms === 1 ? '' : 's'}, ${t.boarders} boarder${t.boarders === 1 ? '' : 's'}` +
-        (Number.isInteger(total) ? ` · Total rooms: ${total}` : '');
-    summary.classList.toggle('rooms-summary-over', Number.isInteger(total) && t.rooms > total);
+function addCustomRoomCard(prefix) {
+    const list = document.getElementById(prefix + '-room-cards');
+    list.insertAdjacentHTML('beforeend', roomCardHtml({ capacity: '', custom: true }));
+    list.lastElementChild.querySelector('.room-custom-cap').focus();
+    updateRoomsFooter(list);
 }
 
-// Room types must be complete whole numbers and can't add up to more
-// rooms than the listing's Total rooms. Returns a message, or null.
-function roomsError(rows, total) {
-    if (!rows.length) return 'Add at least one room type.';
-    for (const r of rows) {
-        if (!Number.isInteger(r.count) || r.count < 1) return 'Each room type needs a number of rooms (at least 1).';
-        if (!Number.isInteger(r.capacity) || r.capacity < 1 || r.capacity > MAX_ROOM_CAPACITY)
-            return `Each room type needs how many people share one room (1 to ${MAX_ROOM_CAPACITY}).`;
-        if (r.openSlots !== undefined) { // stated -- blank is allowed and means "not stated"
-            if (!Number.isInteger(r.openSlots) || r.openSlots < 0) return 'Spaces still open must be a whole number (0 or more), or left blank.';
-            const beds = r.capacity * r.count;
-            if (r.openSlots > beds)
-                return `${r.count} room${r.count === 1 ? '' : 's'} for ${r.capacity} hold${r.count === 1 ? 's' : ''} at most ${beds} people, so spaces still open can't be ${r.openSlots}.`;
+function removeCustomRoomCard(btn) {
+    const list = btn.closest('.room-cards');
+    btn.closest('.room-card').remove();
+    updateRoomsFooter(list);
+}
+
+const cardQty = card => parseInt(card.querySelector('.step-qty').dataset.value) || 0;
+const cardVacant = card => parseInt(card.querySelector('.step-vacant').dataset.value) || 0;
+const cardCapacity = card => card.dataset.custom ? parseInt(card.querySelector('.room-custom-cap').value) : parseInt(card.dataset.capacity);
+function cardOpenSlots(card) {
+    const v = card.querySelector('.step-open').dataset.value;
+    return v === '' ? undefined : parseInt(v);
+}
+// The card's figures in the stored shape, for maxOpenSlots()/placesOpen().
+const cardRoom = card => ({ capacity: cardCapacity(card) || 0, count: cardQty(card), vacant: cardVacant(card), openSlots: cardOpenSlots(card) });
+function setOutput(out, value, display) {
+    out.dataset.value = value;
+    out.textContent = display;
+}
+
+function stepRoom(btn, delta) {
+    const card = btn.closest('.room-card');
+    const next = Math.min(MAX_ROOM_QTY, Math.max(0, cardQty(card) + delta));
+    setOutput(card.querySelector('.step-qty'), next, next);
+    updateRoomsFooter(card); // pulls "empty" and open spaces down if they no longer fit
+}
+
+// Empty rooms: 0..quantity.
+function stepVacant(btn, delta) {
+    const card = btn.closest('.room-card');
+    const next = Math.min(cardQty(card), Math.max(0, cardVacant(card) + delta));
+    setOutput(card.querySelector('.step-vacant'), next, next);
+    updateRoomsFooter(card);
+}
+
+// Open spaces start at "Not stated" (never 0 by default -- 0 reads as
+// full). + from Not stated goes to 1; - from 0 goes back to Not stated;
+// it can't exceed maxOpenSlots() (updateRoomsFooter() also re-clamps it
+// when the quantity or the empty rooms change).
+function stepOpenSlots(btn, delta) {
+    const card = btn.closest('.room-card');
+    const cur = cardOpenSlots(card);
+    let next;
+    if (delta > 0) next = cur === undefined ? 1 : cur + 1;
+    else next = cur === undefined ? undefined : (cur === 0 ? undefined : cur - 1);
+    if (next !== undefined) next = Math.min(next, maxOpenSlots(cardRoom(card)));
+    setOutput(card.querySelector('.step-open'), next === undefined ? '' : next, next === undefined ? 'Not stated' : next);
+    updateRoomsFooter(card);
+}
+
+// Reads the cards -> { rows, error }. Only cards with quantity > 0 are
+// stored. A custom card whose size is missing or duplicates a preset is
+// an error once it has rooms in it (an empty one is just ignored).
+// Open spaces are kept only for shared rooms that aren't all empty.
+function readRoomCards(prefix) {
+    const rows = []; let error = null;
+    document.querySelectorAll(`#${prefix}-room-cards .room-card`).forEach(card => {
+        const count = cardQty(card), capacity = cardCapacity(card);
+        if (count === 0) return;
+        if (card.dataset.custom && !validCustomCapacity(capacity)) {
+            error = error || (PRESET_NAME[capacity]
+                ? `For rooms of ${capacity}, use the ${PRESET_NAME[capacity]} card instead of a custom size.`
+                : `A custom room size must be 3, or 5 to ${MAX_ROOM_CAPACITY} people.`);
+            return;
         }
+        const row = { capacity, count, vacant: cardVacant(card) };
+        const open = cardOpenSlots(card);
+        if (capacity >= 2 && count > row.vacant && open !== undefined) row.openSlots = open;
+        rows.push(row);
+    });
+    return { rows, error };
+}
+
+// Live footer: Total rooms / Vacant / Places available / Maximum
+// boarders, plus the per-card details that depend on other values
+// (which sub-steppers show, their caps, the custom-size message).
+// `el` is anything inside the form.
+function updateRoomsFooter(el) {
+    const prefix = (el.closest('form').id === 'edit-listing-form') ? 'edit' : 'add';
+    let rooms = 0, vacant = 0, places = 0, boarders = 0, unstated = false;
+    document.querySelectorAll(`#${prefix}-room-cards .room-card`).forEach(card => {
+        const qty = cardQty(card), cap = cardCapacity(card);
+        const isCustom = !!card.dataset.custom;
+        const counted = !isCustom || validCustomCapacity(cap);
+        if (isCustom) {
+            card.querySelector('.room-custom-error').textContent = PRESET_NAME[cap]
+                ? `Use the ${PRESET_NAME[cap]} card above for rooms of ${cap}.`
+                : (card.querySelector('.room-custom-cap').value !== '' && !counted ? `Must be 3, or 5 to ${MAX_ROOM_CAPACITY}.` : '');
+        }
+        // Empty rooms can't outnumber the rooms.
+        if (cardVacant(card) > qty) setOutput(card.querySelector('.step-vacant'), qty, qty);
+        const r = cardRoom(card);
+        // Open spaces can't outnumber the free places in the occupied rooms.
+        if (r.openSlots !== undefined && r.openSlots > maxOpenSlots(r)) {
+            r.openSlots = maxOpenSlots(r);
+            setOutput(card.querySelector('.step-open'), r.openSlots, r.openSlots);
+        }
+        card.querySelector('.room-vacant').hidden = !(counted && qty > 0);
+        // Shared rooms only, and only while some of them have someone in.
+        card.querySelector('.room-open').hidden = !(counted && cap >= 2 && qty > r.vacant);
+        if (!counted || qty === 0) return;
+        rooms += qty; vacant += r.vacant; boarders += qty * cap;
+        const open = placesOpen(r);
+        if (open === null) { unstated = true; places += r.vacant * cap; } else places += open;
+    });
+    // One line (its own element: the footer is a column, so bare text and
+    // <strong>s would each stack on a line of their own). "at least" when a
+    // shared card is still on Not stated -- an unknown isn't shown as 0.
+    document.getElementById(prefix + '-rooms-summary').innerHTML =
+        `<span class="rooms-footer-line"><span class="rooms-footer-item">Total rooms: <strong>${rooms}</strong></span> · ` +
+        `<span class="rooms-footer-item">Vacant: <strong>${vacant}</strong></span> · ` +
+        `<span class="rooms-footer-item">Places available: <strong>${unstated ? 'at least ' : ''}${places}</strong></span> · ` +
+        `<span class="rooms-footer-item">Maximum boarders: <strong>${boarders}</strong></span></span>`;
+}
+
+// Save-time checks. Returns a message, or null. The steppers can't
+// produce the per-row cases; these are the backstop.
+function roomsError(rows, cardError) {
+    if (cardError) return cardError;
+    if (!rows.length) return 'Tap + on at least one kind of room.';
+    for (const r of rows) {
+        if (!Number.isInteger(r.vacant) || r.vacant < 0) return 'Empty rooms must be a whole number (0 or more).';
+        if (r.vacant > r.count) return `You have ${roomsPhrase(r.capacity, r.count)}, so no more than ${r.count} can be empty.`;
+        if (r.openSlots === undefined) continue;
+        if (!Number.isInteger(r.openSlots) || r.openSlots < 0) return 'Spaces still open must be a whole number (0 or more).';
+        const occupied = r.count - r.vacant;
+        if (r.openSlots > maxOpenSlots(r))
+            return `${roomsPhrase(r.capacity, r.count)} with ${r.vacant} empty: the ${occupied} with someone in ${occupied === 1 ? 'it has' : 'them have'} ` +
+                `at most ${maxOpenSlots(r)} free place${maxOpenSlots(r) === 1 ? '' : 's'}, so spaces still open can't be ${r.openSlots}.`;
     }
-    const sum = rows.reduce((n, r) => n + r.count, 0);
-    if (Number.isInteger(total) && sum > total) return `Your room types add up to ${sum} rooms, but Total rooms is ${total}.`;
     return null;
 }
 
@@ -2225,7 +2612,7 @@ function saveNewListing(e) {
     const lng = document.getElementById('add-lng').value;
     if(!lat || !lng || isNaN(lat) || isNaN(lng)) return alert("Please mark location on map.");
     const extras = readListingExtras('add');
-    const roomError = roomsError(extras.rooms, parseInt(document.getElementById('add-total').value));
+    const roomError = roomsError(extras.rooms, readRoomCards('add').error);
     if (roomError) return alert(roomError);
     extras.rooms = normalizeRooms(extras.rooms);
 
@@ -2246,8 +2633,8 @@ function saveNewListing(e) {
             id: Date.now(), 
             name: document.getElementById('add-name').value, 
             price: parseInt(document.getElementById('add-price').value), 
-            total: parseInt(document.getElementById('add-total').value), 
-            available: parseInt(document.getElementById('add-available').value), 
+            total: roomTotals(extras.rooms).rooms, // derived from the room cards (2026-10-15)
+            available: roomTotals(extras.rooms).vacant, // likewise: the cards' empty rooms
             location: document.getElementById('add-loc').value, 
             coords: [parseFloat(lat), parseFloat(lng)], 
             amenities: amenities, 
@@ -2257,7 +2644,7 @@ function saveNewListing(e) {
             streetPhotos: photosArray,
             ...extras
         });
-        saveData(['houses']); renderAll(); closeAddListing(); document.getElementById('listing-form').reset(); renderRoomRows('add');
+        saveData(['houses']); renderAll(); closeAddListing(); document.getElementById('listing-form').reset(); renderRoomCards('add');
         if(selectionMarker) { addMap.removeLayer(selectionMarker); selectionMarker = null; }
         saveBtn.innerText = "Save Property"; saveBtn.disabled = false;
     };
@@ -2281,8 +2668,6 @@ function openEditListing(id) {
     document.getElementById('edit-name').value = h.name;
     document.getElementById('edit-loc').value = h.location;
     document.getElementById('edit-price').value = h.price;
-    document.getElementById('edit-total').value = h.total;
-    document.getElementById('edit-available').value = h.available;
     // Direct display, not tryAcceptPinCoords() -- this is an already-saved
     // coordinate being loaded in, not a new one being proposed. A listing
     // saved before this validation existed shouldn't lose its coordinate
@@ -2346,7 +2731,7 @@ function saveEditListing(e) {
     const lng = document.getElementById('edit-lng').value;
     if(!lat || !lng || isNaN(lat) || isNaN(lng)) return alert("Please mark location on map.");
     const extras = readListingExtras('edit');
-    const roomError = roomsError(extras.rooms, parseInt(document.getElementById('edit-total').value));
+    const roomError = roomsError(extras.rooms, readRoomCards('edit').error);
     if (roomError) return alert(roomError);
     extras.rooms = normalizeRooms(extras.rooms);
 
@@ -2368,8 +2753,8 @@ function saveEditListing(e) {
     h.name = document.getElementById('edit-name').value;
     h.location = document.getElementById('edit-loc').value;
     h.price = parseInt(document.getElementById('edit-price').value);
-    h.total = parseInt(document.getElementById('edit-total').value);
-    h.available = parseInt(document.getElementById('edit-available').value);
+    h.total = roomTotals(extras.rooms).rooms; // derived from the room cards (2026-10-15)
+    h.available = roomTotals(extras.rooms).vacant; // likewise: the cards' empty rooms
     h.coords = [parseFloat(lat), parseFloat(lng)];
     Object.assign(h, extras);
     delete h.roomCapacity; // retired field -- rooms replaces it
@@ -2649,9 +3034,9 @@ function openStudentProfile(studentId) {
     // "viewed" when there was nothing to see.
     reloadStudentVerificationDocs();
     const idDoc = studentVerificationDocs.find(d => d.user_id === studentId && d.document_type === 'school_id');
-    if (idDoc?.status === 'approved' && idDoc.file_path) {
+    if (idDoc?.status === 'approved' && hasIdFiles(idDoc)) {
         logAudit('student_document.viewed_by_landowner', 'student_verification_documents', idDoc.id,
-            `School ID viewed by ${ROLE_IDENTITY.landowner.name} (landowner)`);
+            `School ID (front and back) viewed by ${ROLE_IDENTITY.landowner.name} (landowner)`);
         saveData(['auditLogs']);
     }
     renderStudentProfileModal(studentId);
@@ -2688,10 +3073,10 @@ function renderStudentProfileModal(studentId, opts = {}) {
     // back it yet). Never shown in the self view -- the student already
     // sees their own image in the upload panel (renderStudentVerificationSection()).
     const idDoc = studentVerificationDocs.find(d => d.user_id === studentId && d.document_type === 'school_id');
-    const idImageRow = (!isSelf && idDoc?.status === 'approved' && idDoc.file_path)
+    const idImageRow = (!isSelf && idDoc?.status === 'approved' && hasIdFiles(idDoc))
         ? `<div style="margin-top:14px;">
              <p class="mod-meta" style="margin-bottom:6px;">School ID on file:</p>
-             <img class="verification-thumb" style="max-width:220px;" src="${idDoc.file_path}" onclick="openImageModal('${idDoc.file_path}')">
+             ${idThumbsHtml(idDoc, '')}
            </div>`
         : '';
 
@@ -2753,15 +3138,15 @@ function renderMyStudentVerificationPanel() {
         <div style="background:#F8F6FF; border:1px solid #E0D5FF; border-radius:12px; padding:18px 20px; margin-bottom:20px;">
             <h4 style="font-size:15px; margin-bottom:10px;">Before you upload</h4>
             <ul style="margin:0 0 14px 18px; padding:0; font-size:13px; color:#555; line-height:1.6;">
-                <li><strong>What's collected:</strong> a photo of your school ID.</li>
+                <li><strong>What's collected:</strong> photos of the front and back of your school ID (both are required).</li>
                 <li><strong>Why:</strong> for an administrator to verify you're a student; so landowners you've messaged can see it; and to help resolve complaints involving you.</li>
                 <li><strong>Who can see it:</strong> administrators, and landowners you've sent a message to.</li>
-                <li><strong>How long it's kept:</strong> if approved, for as long as you keep it on your account; if rejected, for 7 days, then deleted.</li>
-                <li>You can remove it from My Profile at any time.</li>
+                <li><strong>How long it's kept:</strong> both sides, if approved, for as long as you keep them on your account; if rejected, for 7 days, then both deleted.</li>
+                <li>You can remove both from My Profile at any time.</li>
             </ul>
             <label style="display:flex; align-items:flex-start; gap:10px; font-size:13px; color:#333; cursor:pointer;">
                 <input type="checkbox" id="student-id-consent-checkbox" onchange="updateStudentIdConsentGate()" style="margin-top:2px;">
-                I have read this notice and consent to my school ID being collected and shared as described.
+                I have read this notice and consent to the front and back of my school ID being collected and shared as described.
             </label>
         </div>
         <div id="student-verification-cards" class="verification-grid"></div>`;
@@ -2775,8 +3160,11 @@ function renderMyStudentVerificationPanel() {
 // re-checks the box itself before actually accepting a file.
 function updateStudentIdConsentGate() {
     const checked = document.getElementById('student-id-consent-checkbox')?.checked;
-    const input = document.getElementById('student-id-file-input');
-    if (input) input.disabled = !checked;
+    ['front', 'back'].forEach(side => {
+        const input = document.getElementById(`student-school_id-${side}-input`);
+        if (input) input.disabled = !checked;
+    });
+    refreshIdDraftUi('student', 'school_id'); // Submit also needs the box ticked
 }
 
 function renderMyStudentProfileEdit() {
@@ -3009,6 +3397,17 @@ function logAudit(action, entityType, entityId, label) {
         createdAt: new Date().toISOString()
     });
     if (auditLogs.length > 300) auditLogs.length = 300;  // keep storage bounded
+    /* BUG (fixed 2026-10-14): entries were only written by the caller's
+       later saveData/saveAdminData. A second logAudit() before that save
+       ran reloadAuditLogs() above and threw the first, unsaved entry away
+       -- so every function that logs twice (an ID decision logs the file
+       deletion, then the decision) or in a loop (the 7-day purges) kept
+       only its LAST entry. The "file deleted on approval" record, the
+       evidence that retention actually happened, was never stored. Each
+       entry is now persisted the moment it's added; the caller's own save
+       of 'auditLogs' afterwards just rewrites the same array. */
+    try { localStorage.setItem('eboard_audit_v13', JSON.stringify(auditLogs)); }
+    catch (e) { console.warn('[E-Board] audit entry not persisted:', e.message); }
 }
 
 /* directions.html's "Back to directory" link points here with
@@ -3097,6 +3496,7 @@ window.addEventListener('storage', (e) => {
 populateSchoolDropdown();
 renderRulesFieldset('add');
 renderRulesFieldset('edit');
-renderRoomRows('add');
+renderRoomCards('add');
+syncHeaderHeight();
 restoreSession();
 openPropertyFromQueryParam();

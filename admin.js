@@ -214,13 +214,48 @@ function syncVerificationTier() {
    in the meantime. A real backend would run this as a scheduled
    server-side job (e.g. a daily cron sweep), guaranteeing deletion on
    schedule regardless of whether anyone is using the app. */
+/* ---- Two-sided ID images (2026-10-14) ----
+   Front and back are each their own upload. file_path / file_hash hold
+   the FRONT -- unchanged field names, so records saved before still
+   read correctly -- and file_path_back / file_hash_back the BACK. A
+   record saved before two-sided upload has no file_hash_back key at all:
+   that (not a null path) is how "back not provided" is told apart from
+   "back deleted", since deletion never touches the hashes. The Laravel
+   schema needs matching file_path_back / file_hash_back columns.
+   RETENTION: every deletion goes through clearIdFiles(), so neither side
+   can outlive the rule that deletes the other. */
+function idSides(doc) {
+    return [
+        { label: 'Front', path: doc.file_path, hash: doc.file_hash, notProvided: false },
+        { label: 'Back', path: doc.file_path_back, hash: doc.file_hash_back, notProvided: !('file_hash_back' in doc) }
+    ];
+}
+function hasIdFiles(doc) { return !!(doc && (doc.file_path || doc.file_path_back)); }
+function clearIdFiles(doc) { doc.file_path = null; doc.file_path_back = null; }
+// Both sides side by side, labelled; image src values are data URLs this
+// app generated (resizeAndCompress), as before. Labels are static text.
+function idThumbsHtml(doc, notRetainedText) {
+    if (!hasIdFiles(doc)) return `<p class="mod-meta" style="font-style:italic;">${notRetainedText}</p>`;
+    return `<div class="id-sides">${idSides(doc).map(s => s.path
+        ? `<figure class="id-side"><img class="verification-thumb" src="${s.path}" alt="${s.label} of ID" onclick="openImageModal('${s.path}')"><figcaption>${s.label}</figcaption></figure>`
+        : `<figure class="id-side id-side-missing"><figcaption>${s.label}: ${s.notProvided ? 'not provided (submitted before two-sided upload)' : 'not retained'}</figcaption></figure>`
+    ).join('')}</div>`;
+}
+// One SHA-256 line per side (each of the ORIGINAL uploaded file).
+function idHashLinesHtml(doc) {
+    return idSides(doc).filter(s => s.hash || s.notProvided).map(s => s.hash
+        ? `<p class="mod-meta" style="font-size:11px; color:#999;">SHA-256 (${s.label.toLowerCase()}):
+            <code style="word-break:break-all;">${escapeHtml(s.hash)}</code></p>`
+        : `<p class="mod-meta" style="font-size:11px; color:#999;">SHA-256 (${s.label.toLowerCase()}): not provided</p>`).join('');
+}
+
 function purgeExpiredRejectedDocs() {
     reloadVerificationDocs();
     const windowMs = REJECTED_DOC_RETENTION_DAYS * 24 * 60 * 60 * 1000;
     let purged = false;
     verificationDocs.forEach(d => {
-        if (d.status === 'rejected' && d.file_path && (Date.now() - new Date(d.reviewed_at).getTime()) > windowMs) {
-            d.file_path = null;
+        if (d.status === 'rejected' && hasIdFiles(d) && (Date.now() - new Date(d.reviewed_at).getTime()) > windowMs) {
+            clearIdFiles(d);
             purged = true;
             logAudit('document.file_purged', 'verification_documents', d.id,
                 `${DOCUMENT_TYPES.find(t => t.key === d.document_type)?.label || d.document_type} — rejected document deleted after ${REJECTED_DOC_RETENTION_DAYS}-day retention window`);
@@ -237,8 +272,8 @@ function purgeExpiredRejectedStudentDocs() {
     const windowMs = REJECTED_DOC_RETENTION_DAYS * 24 * 60 * 60 * 1000;
     let purged = false;
     studentVerificationDocs.forEach(d => {
-        if (d.status === 'rejected' && d.file_path && (Date.now() - new Date(d.reviewed_at).getTime()) > windowMs) {
-            d.file_path = null;
+        if (d.status === 'rejected' && hasIdFiles(d) && (Date.now() - new Date(d.reviewed_at).getTime()) > windowMs) {
+            clearIdFiles(d);
             purged = true;
             logAudit('document.file_purged', 'student_verification_documents', d.id,
                 `${STUDENT_DOCUMENT_TYPES.find(t => t.key === d.document_type)?.label || d.document_type} — rejected document deleted after ${REJECTED_DOC_RETENTION_DAYS}-day retention window`);
@@ -318,6 +353,17 @@ function logAudit(action, entityType, entityId, label) {
         createdAt: new Date().toISOString()
     });
     if (auditLogs.length > 300) auditLogs.length = 300;  // keep storage bounded
+    /* BUG (fixed 2026-10-14): entries were only written by the caller's
+       later saveData/saveAdminData. A second logAudit() before that save
+       ran reloadAuditLogs() above and threw the first, unsaved entry away
+       -- so every function that logs twice (an ID decision logs the file
+       deletion, then the decision) or in a loop (the 7-day purges) kept
+       only its LAST entry. The "file deleted on approval" record, the
+       evidence that retention actually happened, was never stored. Each
+       entry is now persisted the moment it's added; the caller's own save
+       of 'auditLogs' afterwards just rewrites the same array. */
+    try { localStorage.setItem('eboard_audit_v13', JSON.stringify(auditLogs)); }
+    catch (e) { console.warn('[E-Board] audit entry not persisted:', e.message); }
 }
 
 /* =====================================================================
@@ -688,9 +734,7 @@ function renderOwnerDetail(panel, owner) {
         // deleted (immediately on approval, or after the retention
         // window on rejection) -- see submitDocDecision/
         // purgeExpiredRejectedDocs. Only the decision record remains.
-        const thumb = doc.file_path
-            ? `<img class="verification-thumb" src="${doc.file_path}" onclick="openImageModal('${doc.file_path}')">`
-            : `<p class="mod-meta" style="font-style:italic;">Document not retained.</p>`;
+        const thumb = idThumbsHtml(doc, 'Document not retained.');
 
         if (doc.status === 'pending') {
             return `
@@ -719,9 +763,7 @@ function renderOwnerDetail(panel, owner) {
                 Unexpired/non-expiring ${chk.idUnexpired ? '✔' : '✖'} ·
                 Legible ${chk.legible ? '✔' : '✖'} ·
                 QR verified ${qrDisplay}</p>` : '';
-        const hashLine = doc.file_hash
-            ? `<p class="mod-meta" style="font-size:11px; color:#999;">SHA-256:
-                <code style="word-break:break-all;">${escapeHtml(doc.file_hash)}</code></p>` : '';
+        const hashLine = idHashLinesHtml(doc);
         return `
             <div class="mod-card verification-doc-card status-${doc.status}">
                 ${thumb}
@@ -911,9 +953,7 @@ function renderStudentDetail(panel, student) {
                 </div>
             </div>`;
     } else {
-        const thumb = doc.file_path
-            ? `<img class="verification-thumb" src="${doc.file_path}" onclick="openImageModal('${doc.file_path}')">`
-            : `<p class="mod-meta" style="font-style:italic;">Document not retained.</p>`;
+        const thumb = idThumbsHtml(doc, 'Document not retained.');
         // Recorded at upload time (script.js's uploadStudentVerificationDoc())
         // -- shown here purely as a transparency aid for the reviewer, not
         // itself part of the checklist gate.
@@ -945,11 +985,9 @@ function renderStudentDetail(panel, student) {
                 <p class="mod-meta" style="font-size:12px;">Checklist:
                     Name matches ${chk.nameMatches ? '✔' : '✖'} ·
                     School matches ${chk.schoolMatches ? '✔' : '✖'} ·
-                    Current/recent academic year ${chk.recentAcademicYear ? '✔' : '✖'} ·
+                    Validity sticker (back) current/recent ${chk.recentAcademicYear ? '✔' : '✖'} ·
                     Legible ${chk.legible ? '✔' : '✖'}</p>` : '';
-            const hashLine = doc.file_hash
-                ? `<p class="mod-meta" style="font-size:11px; color:#999;">SHA-256:
-                    <code style="word-break:break-all;">${escapeHtml(doc.file_hash)}</code></p>` : '';
+            const hashLine = idHashLinesHtml(doc);
             docCard = `
                 <div class="mod-card verification-doc-card status-${doc.status}">
                     ${thumb}
@@ -1006,9 +1044,7 @@ function openDocReviewModal(id) {
 
     const label = DOCUMENT_TYPES.find(t => t.key === doc.document_type)?.label || doc.document_type;
     document.getElementById('doc-review-label').innerText = label;
-    document.getElementById('doc-review-thumb-wrap').innerHTML = doc.file_path
-        ? `<img class="verification-thumb" src="${doc.file_path}" onclick="openImageModal('${doc.file_path}')">`
-        : `<p class="mod-meta" style="font-style:italic;">Document not retained.</p>`;
+    document.getElementById('doc-review-thumb-wrap').innerHTML = idThumbsHtml(doc, 'Document not retained.');
 
     document.querySelectorAll('#doc-review-modal input[type="radio"]').forEach(r => r.checked = false);
     document.getElementById('doc-review-reason').value = '';
@@ -1065,9 +1101,9 @@ function submitDocDecision(decision) {
     // Approved documents' files are deleted immediately, not windowed --
     // only a rejection gets the retention window (purgeExpiredRejectedDocs).
     if (decision === 'approved') {
-        doc.file_path = null;
+        clearIdFiles(doc); // front AND back
         logAudit('document.file_purged', 'verification_documents', doc.id,
-            `${label} — Ana Ramos — file deleted immediately on approval`);
+            `${label} — Ana Ramos — front and back deleted immediately on approval`);
     }
 
     syncVerificationTier(); // also reloads+updates houses & landownerProfile, see its own comment
@@ -1102,9 +1138,7 @@ function openStudentDocReviewModal(id) {
 
     const label = STUDENT_DOCUMENT_TYPES.find(t => t.key === doc.document_type)?.label || doc.document_type;
     document.getElementById('student-doc-review-label').innerText = label;
-    document.getElementById('student-doc-review-thumb-wrap').innerHTML = doc.file_path
-        ? `<img class="verification-thumb" src="${doc.file_path}" onclick="openImageModal('${doc.file_path}')">`
-        : `<p class="mod-meta" style="font-style:italic;">Document not retained.</p>`;
+    document.getElementById('student-doc-review-thumb-wrap').innerHTML = idThumbsHtml(doc, 'Document not retained.');
 
     document.querySelectorAll('#student-doc-review-modal input[type="radio"]').forEach(r => r.checked = false);
     document.getElementById('student-doc-review-reason').value = '';

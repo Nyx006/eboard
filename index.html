@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
     <meta name="color-scheme" content="light">
     <title>E-Board | Online Student Accommodation Directory</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;800&display=swap" rel="stylesheet">
@@ -162,6 +162,11 @@
                 
                 <div id="details-card-content"></div>
 
+                <!-- Filled by renderRulesSection() in script.js. Directly under the
+                     name/price block: room composition is one of the first things a
+                     student needs (moved up 2026-10-14). -->
+                <div id="details-rules-section" class="rules-container" style="margin-top: 30px;"></div>
+
                 <div id="recommendation-section" style="display: none; margin: 20px 0; padding: 20px; background: #FFF4F4; border-radius: 12px; border: 1px solid #FFCACA;">
                     <h4 style="color: #D32F2F; margin-bottom: 10px;">⚠️ This house is currently Full</h4>
                     <p style="font-size: 14px; margin-bottom: 15px;">Nearest available options to campus:</p>
@@ -179,8 +184,6 @@
                     <div id="details-amenities-grid" class="amenities-grid"></div>
                 </div>
 
-                <!-- Filled by renderRulesSection() in script.js. -->
-                <div id="details-rules-section" class="rules-container" style="margin-top: 40px;"></div>
 
                 <div id="landowner-about-section" style="margin-top: 40px;"></div>
 
@@ -205,7 +208,10 @@
 
         <div id="messages-view" style="display: none;">
             <main class="content">
-                <h2 class="section-title" id="inbox-title">Messages</h2>
+                <div class="inbox-head">
+                    <button type="button" class="inbox-back-btn" onclick="closeInbox()" aria-label="Back">‹</button>
+                    <h2 class="section-title" id="inbox-title">Messages</h2>
+                </div>
                 <div id="inbox-list" class="inbox-container"></div>
             </main>
         </div>
@@ -255,9 +261,10 @@
                         verification badge until at least one is.
                     </p>
                     <p style="color:#888; font-size:13px; font-style:italic; margin-bottom:20px;">
-                        🔒 Uploaded documents are deleted once reviewed — approved documents immediately,
-                        rejected documents after a 7-day window in case you need to see why. Only the
-                        decision (not the file) is kept afterward.
+                        Upload photos of the <strong>front and back</strong> of your ID — both are required.<br>
+                        🔒 Both photos are deleted once reviewed — immediately if approved, after a 7-day
+                        window if rejected, in case you need to see why. Only the decision (not the
+                        photos) is kept afterward.
                     </p>
                     <div id="verification-cards" class="verification-grid"></div>
                 </div>
@@ -268,6 +275,7 @@
 
     <div id="chat-overlay" class="chat-window" style="display: none;">
         <div class="chat-header">
+            <button type="button" class="chat-back-btn" onclick="chatBackToList()" aria-label="Back to conversations">‹</button>
             <div class="chat-header-identity" id="chat-header-identity">
                 <span id="chat-with-avatar"></span>
                 <div style="min-width:0;">
@@ -315,10 +323,6 @@
                     <div class="field"><label class="field-label" for="add-loc">Location (barangay)</label><input type="text" id="add-loc" placeholder="e.g. Purok 6, Rawis" required></div>
                     <div class="field"><label class="field-label" for="add-price">Monthly price (₱)</label><input type="number" id="add-price" min="0" placeholder="e.g. 4500" required></div>
                 </div>
-                <div class="input-row" style="margin-bottom: 15px;">
-                    <div class="field"><label class="field-label" for="add-total">Total rooms</label><input type="number" id="add-total" min="1" required oninput="updateRoomsSummary(this)"></div>
-                    <div class="field"><label class="field-label" for="add-available">Vacant rooms</label><input type="number" id="add-available" min="0" required></div>
-                </div>
                 <h4 style="margin: 20px 0 12px 0; font-size: 15px; color: #444;">Amenities</h4>
                 <div class="amenities-toggle-grid">
                     <label><input type="checkbox" value="🛏️ Bed"> Bed</label>
@@ -330,11 +334,12 @@
                     <label><input type="checkbox" value="❄️ Aircon"> Aircon</label>
                 </div>
                 <h4 style="margin: 20px 0 12px 0; font-size: 15px; color: #444;">Rooms &amp; house rules</h4>
-                <!-- Room types: built by renderRoomRows() in script.js. -->
+                <!-- Room types: cards built by renderRoomCards() in script.js. -->
                 <fieldset class="rooms-fieldset">
                     <legend class="field-label">Room types</legend>
-                    <div class="room-rows" id="add-room-rows"></div>
-                    <button type="button" class="room-add" onclick="addRoomRow('add')">+ Add room type</button>
+                    <p class="rooms-help">Tap + on each kind of room you have.</p>
+                    <div class="room-cards" id="add-room-cards"></div>
+                    <button type="button" class="room-add" onclick="addCustomRoomCard('add')">+ Add custom room size</button>
                     <p class="rooms-summary" id="add-rooms-summary" aria-live="polite"></p>
                 </fieldset>
                 <fieldset class="rules-fieldset" id="add-rules"><legend class="field-label">House rules</legend></fieldset>
@@ -374,10 +379,6 @@
                     <div class="field"><label class="field-label" for="edit-loc">Location (barangay)</label><input type="text" id="edit-loc" placeholder="e.g. Purok 6, Rawis" required></div>
                     <div class="field"><label class="field-label" for="edit-price">Monthly price (₱)</label><input type="number" id="edit-price" min="0" placeholder="e.g. 4500" required></div>
                 </div>
-                <div class="input-row" style="margin-bottom: 15px;">
-                    <div class="field"><label class="field-label" for="edit-total">Total rooms</label><input type="number" id="edit-total" min="1" required oninput="updateRoomsSummary(this)"></div>
-                    <div class="field"><label class="field-label" for="edit-available">Vacant rooms</label><input type="number" id="edit-available" min="0" required></div>
-                </div>
                 <h4 style="margin: 20px 0 12px 0; font-size: 15px; color: #444;">Amenities</h4>
                 <div class="amenities-toggle-grid" id="edit-amenities-grid">
                     <label><input type="checkbox" value="🛏️ Bed"> Bed</label>
@@ -389,11 +390,12 @@
                     <label><input type="checkbox" value="❄️ Aircon"> Aircon</label>
                 </div>
                 <h4 style="margin: 20px 0 12px 0; font-size: 15px; color: #444;">Rooms &amp; house rules</h4>
-                <!-- Room types: built by renderRoomRows() in script.js. -->
+                <!-- Room types: cards built by renderRoomCards() in script.js. -->
                 <fieldset class="rooms-fieldset">
                     <legend class="field-label">Room types</legend>
-                    <div class="room-rows" id="edit-room-rows"></div>
-                    <button type="button" class="room-add" onclick="addRoomRow('edit')">+ Add room type</button>
+                    <p class="rooms-help">Tap + on each kind of room you have.</p>
+                    <div class="room-cards" id="edit-room-cards"></div>
+                    <button type="button" class="room-add" onclick="addCustomRoomCard('edit')">+ Add custom room size</button>
                     <p class="rooms-summary" id="edit-rooms-summary" aria-live="polite"></p>
                 </fieldset>
                 <fieldset class="rules-fieldset" id="edit-rules"><legend class="field-label">House rules</legend></fieldset>

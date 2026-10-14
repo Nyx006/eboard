@@ -111,15 +111,29 @@ function segmentDistance(path, startIdx, endIdx) {
    through many <35° edge-to-edge changes would never trigger a split
    under an edge-to-edge comparison even after turning 90° overall;
    comparing every edge back to where the segment started catches that. */
+/* Edges shorter than this have no meaningful bearing. The common case:
+   a pin that sits exactly on a graph vertex (0 m snap) makes the path's
+   first edge pin -> vertex zero-length, and bearingDeg() of two identical
+   points is 0 deg = "N". Before 2026-10-14 that became its own 0 m
+   segment, "Head N from <listing> · 0 m". Such edges now stay inside the
+   current segment and never set or change a bearing. */
+const MIN_BEARING_EDGE_M = 0.5;
+
 function mergeSegmentsByBearing(path, thresholdDeg) {
     if (thresholdDeg === undefined) thresholdDeg = 35;
     if (path.length < 2) return [];
+    const edgeLen = i => EBoardRouter.haversine(path[i][0], path[i][1], path[i + 1][0], path[i + 1][1]);
+
+    // The starting bearing comes from the first edge with a real length.
+    let first = 0;
+    while (first < path.length - 2 && edgeLen(first) < MIN_BEARING_EDGE_M) first++;
 
     const segments = [];
     let startIdx = 0;
-    let startBearing = bearingDeg(path[0], path[1]);
+    let startBearing = bearingDeg(path[first], path[first + 1]);
 
-    for (let i = 1; i < path.length - 1; i++) {
+    for (let i = first + 1; i < path.length - 1; i++) {
+        if (edgeLen(i) < MIN_BEARING_EDGE_M) continue; // no bearing; stays in the current segment
         const edgeBearing = bearingDeg(path[i], path[i + 1]);
         if (Math.abs(circularDiffDeg(startBearing, edgeBearing)) > thresholdDeg) {
             segments.push({ startIdx, endIdx: i, distanceM: segmentDistance(path, startIdx, i), bearingDeg: startBearing });
@@ -339,13 +353,16 @@ function boot() {
             const compass = compassLabel(seg.bearingDeg);
             const isFirst = i === 0;
             const isLast = i === segments.length - 1;
+            // One pattern on every line, "action (compass)" (2026-10-14).
+            // The last line used to always say "Continue ... to <campus>",
+            // even when it was a turn; it now uses the real turn.
             let label;
             if (isFirst && isLast) {
-                label = `Head ${compass} from ${propertyName} to ${campusName}`;
+                label = `Start (${compass}) from ${propertyName} to ${campusName}`;
             } else if (isFirst) {
-                label = `Head ${compass} from ${propertyName}`;
+                label = `Start (${compass}) from ${propertyName}`;
             } else if (isLast) {
-                label = `Continue ${compass} to ${campusName}`;
+                label = `${turnLabel(circularDiffDeg(prevBearing, seg.bearingDeg))} (${compass}) to ${campusName}`;
             } else {
                 label = `${turnLabel(circularDiffDeg(prevBearing, seg.bearingDeg))} (${compass})`;
             }

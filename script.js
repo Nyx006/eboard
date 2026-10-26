@@ -1905,18 +1905,80 @@ function renderAll() {
    Price and distance filtering existed before a script.js rewrite
    dropped them (recovered from the pre-git backup); pets and boarders
    per room were added for the panel's feedback, using the new listing
-   fields. Minimum stay and curfew are free text, so they're shown on
-   the details page but deliberately not filterable. Only the student
+   fields. Amenities, house rules, curfew and verified-only were added
+   after that. Curfew is landowner free text and was deliberately not
+   filterable for exactly that reason; it is filterable now because
+   normaliseCurfew() reduces it to an hour and treats anything it
+   cannot read as "has a curfew, time unknown" rather than guessing.
+   Minimum stay is still free text and still not filterable. Only the student
    grid is filtered -- not the landowner dashboard, which renderAll()
    also builds, and not showRecommendations(). */
+/* The six amenities a listing can carry, as stored. Matching is done on
+   a normalised form rather than the stored string: the stored values
+   carry an emoji prefix ("📶 WiFi"), and comparing those literally
+   would break the moment one is re-saved without it. */
+const AMENITY_FILTERS = {
+    'filter-am-wifi':    'wifi',
+    'filter-am-aircon':  'aircon',
+    'filter-am-kitchen': 'kitchen',
+    'filter-am-water':   'water',
+    'filter-am-cctv':    'cctv',
+    'filter-am-bed':     'bed'
+};
+
+/* House rules, checkbox id -> the key on house.rules. */
+const RULE_FILTERS = {
+    'filter-pets':      'pets',
+    'filter-smoking':   'smoking',
+    'filter-cooking':   'cooking',
+    'filter-visitors':  'visitors',
+    'filter-alcohol':   'alcohol',
+    'filter-overnight': 'overnightGuests'
+};
+
+/* Strip the emoji and punctuation a stored amenity carries so
+   "📶 WiFi" and "Wi-Fi" both reduce to "wifi". */
+function normaliseAmenity(s) {
+    return String(s ?? '').toLowerCase().replace(/[^a-z]/g, '');
+}
+
+/* Curfew is landowner free text -- "10:00 PM", "None", "", sometimes
+   something unparseable like "after dinner". Reduced here to one of:
+     null  -- no curfew ("None", blank, a dash)
+     hour  -- 0-23, when a time can actually be read out of it
+     NaN   -- there IS a curfew but we cannot tell when
+   A house whose curfew we cannot read is deliberately NOT returned for
+   "10 PM or later": it has a curfew and has not promised it is late
+   enough. That matches how the rule filters treat a blank as "no". */
+function normaliseCurfew(raw) {
+    const s = String(raw ?? '').trim().toLowerCase();
+    if (!s || s === 'none' || s === 'n/a' || s === '-' || s === 'no curfew') return null;
+    const m = s.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+    if (!m) return NaN;
+    let hour = parseInt(m[1], 10);
+    if (hour < 0 || hour > 23) return NaN;
+    const ampm = m[3];
+    if (ampm === 'pm' && hour < 12) hour += 12;
+    if (ampm === 'am' && hour === 12) hour = 0;
+    // A bare "10" with no am/pm on a curfew means the evening.
+    if (!ampm && hour < 12) hour += 12;
+    return hour;
+}
+
 function readFilters() {
     const val = id => document.getElementById(id);
+    const checked = map => Object.entries(map)
+        .filter(([id]) => val(id)?.checked)
+        .map(([, key]) => key);
     return {
         maxPrice: parseInt(val('filter-price')?.value || 0),
         maxDist: parseFloat(val('filter-dist')?.value || 0),
         maxRoom: parseInt(val('filter-room')?.value || 0),
-        pets: !!val('filter-pets')?.checked,
-        vacantOnly: !!val('filter-vacant')?.checked
+        curfew: val('filter-curfew')?.value || '',
+        amenities: checked(AMENITY_FILTERS),
+        rules: checked(RULE_FILTERS),
+        vacantOnly: !!val('filter-vacant')?.checked,
+        verifiedOnly: !!val('filter-verified')?.checked
     };
 }
 
@@ -1930,14 +1992,42 @@ function passesFilters(house, query, f) {
     // someone who'll share with at most one other is happy with a solo
     // room too. A listing with no room data can't promise that.
     if (f.maxRoom > 0 && !(house.rooms || []).some(r => r.capacity <= f.maxRoom)) return false;
+
+    // Every ticked amenity must be present -- ticking WiFi and Aircon
+    // means "both", not "either".
+    if (f.amenities.length) {
+        const have = new Set((house.amenities || []).map(normaliseAmenity));
+        if (!f.amenities.every(a => have.has(a))) return false;
+    }
+
     // Only an explicit "Allowed" counts; "not specified" doesn't.
-    if (f.pets && house.rules?.pets !== 'yes') return false;
+    if (f.rules.length && !f.rules.every(k => house.rules?.[k] === 'yes')) return false;
+
+    if (f.curfew) {
+        const hour = normaliseCurfew(house.curfew);
+        if (f.curfew === 'none') {
+            if (hour !== null) return false;
+        } else {
+            // No curfew at all satisfies any "or later" request; an
+            // unreadable curfew (NaN) satisfies none of them.
+            const wanted = parseInt(f.curfew, 10);
+            if (!(hour === null || hour >= wanted)) return false;
+        }
+    }
+
     if (f.vacantOnly && house.available <= 0) return false;
+    // "Verified" means the landowner cleared at least one check -- ID or
+    // site visit. DOCUMENTS_SUBMITTED is not verified: it only means
+    // something was uploaded and nobody has looked at it yet.
+    if (f.verifiedOnly && !['ID_VERIFIED', 'SITE_VISITED', 'FULLY_VERIFIED']
+            .includes(house.verificationTier)) return false;
     return true;
 }
 
 function activeFilterCount(f) {
-    return [f.maxPrice > 0, f.maxDist > 0, f.maxRoom > 0, f.pets, f.vacantOnly].filter(Boolean).length;
+    return [f.maxPrice > 0, f.maxDist > 0, f.maxRoom > 0, !!f.curfew,
+            f.vacantOnly, f.verifiedOnly].filter(Boolean).length
+         + f.amenities.length + f.rules.length;
 }
 
 function updateFilterSummary(f, shown, total) {
@@ -1955,7 +2045,14 @@ function updateFilterSummary(f, shown, total) {
 // also clears the search text, since either can be what hid everything.
 function clearFilters(alsoSearch = false) {
     ['filter-price', 'filter-dist', 'filter-room'].forEach(id => { document.getElementById(id).value = '0'; });
-    ['filter-pets', 'filter-vacant'].forEach(id => { document.getElementById(id).checked = false; });
+    // Curfew's "any" is the empty string, not '0'.
+    const curfew = document.getElementById('filter-curfew');
+    if (curfew) curfew.value = '';
+    [...Object.keys(AMENITY_FILTERS), ...Object.keys(RULE_FILTERS),
+     'filter-vacant', 'filter-verified'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.checked = false;
+    });
     if (alsoSearch) document.getElementById('search-input').value = '';
     renderAll();
 }
@@ -3500,3 +3597,98 @@ renderRoomCards('add');
 syncHeaderHeight();
 restoreSession();
 openPropertyFromQueryParam();
+
+/* ---- BROWSER BACK BUTTON ------------------------------------------
+   The directory is one page whose views and modals are toggled with
+   display, so without this the browser Back button leaves the site
+   entirely from a listing, the inbox, a chat thread or any modal. One
+   student reported exactly that in the ISO/IEC 25010 evaluation and it
+   is recorded as a defect in the RAD.
+
+   How it works: whenever any dismissible layer is open, a sentinel
+   entry is pushed onto the history stack. Back consumes that sentinel,
+   and we close the topmost layer using the app's OWN close handler --
+   the same function the on-screen "<" or "x" calls -- so the two do
+   exactly the same thing. Closing a layer on-screen instead removes
+   the sentinel again, which keeps the history stack from filling up
+   with dead entries. With nothing open, Back leaves the site as usual.
+
+   Nothing here changes what is rendered. The manuscript's 27 figures
+   stay accurate.
+
+   Note: admin.html and directions.html are separate documents, so
+   their Back behaviour is the browser's own and needs nothing. */
+(function backButtonNavigation() {
+    /* Dismissible layers, topmost first: modals sit above the chat
+       overlay, which sits above the inbox and listing views. */
+    const LAYERS = [
+        ['image-view-modal',        () => closeImageModal()],
+        ['review-modal',            () => closeReviewModal()],
+        ['schedule-modal',          () => closeScheduleModal()],
+        ['add-listing-modal',       () => closeAddListing()],
+        ['edit-listing-modal',      () => closeEditListing()],
+        ['landowner-profile-modal', () => closeLandownerProfileModal()],
+        ['student-profile-modal',   () => closeStudentProfileModal()],
+        ['chat-overlay',            () => chatBackToList()],
+        ['messages-view',           () => closeInbox()],
+        ['details-view',            () => closeDetails()],
+    ];
+
+    /* getClientRects() is empty for anything display:none, here or on an
+       ancestor, and unlike offsetParent it still reports position:fixed
+       modals as visible. */
+    const isOpen = el => !!el && el.getClientRects().length > 0;
+
+    function topLayer() {
+        for (const [id, close] of LAYERS) {
+            if (isOpen(document.getElementById(id))) return close;
+        }
+        return null;
+    }
+
+    let sentinel = false;   // our entry is currently on the history stack
+    let internal = false;   // this history change is ours, not the user's
+
+    function sync() {
+        if (internal) return;
+        const open = !!topLayer();
+        if (open && !sentinel) {
+            sentinel = true;
+            history.pushState({ eboardLayer: true }, '');
+        } else if (!open && sentinel) {
+            // Closed from the on-screen control: take our entry back off.
+            sentinel = false;
+            internal = true;
+            history.back();
+            // If popstate somehow never arrives, don't wedge the flag on.
+            setTimeout(() => { internal = false; }, 500);
+        }
+    }
+
+    window.addEventListener('popstate', function () {
+        if (internal) { internal = false; return; }
+        const close = topLayer();
+        if (!close) return;     // nothing open -- let the browser navigate away
+        sentinel = false;       // Back just consumed it
+        internal = true;
+        try { close(); } catch (err) { console.error('[nav] close failed', err); }
+        internal = false;
+        sync();                 // closing one layer can reveal another
+    });
+
+    /* Layers open from many call sites, so watch the elements themselves
+       rather than wrapping every opener -- that way nothing added later
+       can bypass this. Coalesced to one check per frame. */
+    let queued = false;
+    function schedule() {
+        if (queued) return;
+        queued = true;
+        requestAnimationFrame(() => { queued = false; sync(); });
+    }
+    const observer = new MutationObserver(schedule);
+    LAYERS.forEach(([id]) => {
+        const el = document.getElementById(id);
+        if (el) observer.observe(el, { attributes: true, attributeFilter: ['style', 'class'] });
+    });
+    schedule();   // openPropertyFromQueryParam() may have opened a listing already
+})();

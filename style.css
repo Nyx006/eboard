@@ -560,6 +560,16 @@ select {
 .search-inner .filter-field select { padding: 12px 40px 12px 14px; font-size: 15px; }
 .filter-check { display: flex; align-items: center; gap: 10px; min-height: 48px; background: rgba(255,255,255,0.15); padding: 0 16px; border-radius: 12px; font-weight: 600; font-size: 15px; cursor: pointer; }
 .search-inner .filter-check input { width: 20px; height: 20px; padding: 0; margin: 0; box-shadow: none; accent-color: white; flex: none; }
+/* Grouped filters. The chips wrap instead of sitting in the 3-column
+   grid: twelve of them in fixed columns leaves ragged gaps, and on a
+   phone it reads better as a flowing row. min-height stays at 44px --
+   these are tapped on a phone, not clicked. */
+.filter-section { padding: 0 18px 12px; }
+.filter-section-label { font-size: 13px; font-weight: 700; color: rgba(255,255,255,0.95); margin: 0 0 8px; }
+.filter-section-hint { font-weight: 500; opacity: 0.75; }
+.filter-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.filter-chips .filter-check { min-height: 44px; padding: 0 14px; font-size: 14px; flex: 0 1 auto; }
+
 .filter-clear { background: white; color: #6b4fc4; border: none; border-radius: 10px; min-height: 44px; padding: 0 18px; font-weight: 700; font-size: 14px; font-family: inherit; cursor: pointer; }
 .filter-panel .filter-clear { margin: 0 18px 16px; }
 .result-count { color: #666; font-size: 14px; margin: -10px 0 18px; }

@@ -176,6 +176,28 @@ function boot() {
     let map, routeLine, campusMarker, avatarMarker;
     let currentPath = [], cumDist = [0], totalDist = 0, segments = [];
     let currentCampusName = '';
+    /* Who the route runs from and to, for the panel text. Campus mode
+       sets (listing -> campus); GPS mode sets (your location -> listing). */
+    let routeFromName = '', routeToName = '';
+
+    /* ---- live location ----
+       originMode is 'campus' (the original behaviour) or 'gps'.
+       myPos is the latest fix; lastRoutedFrom is the fix the current
+       route was computed from, so the router only re-runs once the
+       student has actually moved. */
+    let originMode = 'campus';
+    let myPos = null, lastRoutedFrom = null;
+    let myMarker = null, myAccuracyCircle = null, watchId = null;
+
+    // Re-run Dijkstra once the student has moved this far. Every fix
+    // moves the blue dot; only a real move rebuilds the route, so a
+    // phone jittering by a few metres while standing still doesn't
+    // redraw the panel over and over.
+    const GPS_RECOMPUTE_M = 30;
+    // Further than this from any mapped road means the fix is outside
+    // the bundled Legazpi road data -- better to say so than to snap
+    // the route to a road kilometres away and present it as fact.
+    const GPS_MAX_SNAP_M = 2000;
     let traveledM = 0, speedMultiplier = 1, playing = false, lastFrameTime = null, animFrameId = null;
     let graphInitMs = null;
 
@@ -228,7 +250,12 @@ function boot() {
     const select = document.getElementById('campus-select');
     select.innerHTML = schools.map(s => `<option>${s.name}</option>`).join('');
     select.selectedIndex = originIdx;
-    select.onchange = () => computeRoute(select.selectedIndex);
+    // Picking a campus takes over from live tracking, otherwise the next
+    // GPS fix would pull the route straight back to "from your location".
+    select.onchange = () => {
+        if (watchId !== null) stopGps(false);
+        computeRoute(select.selectedIndex);
+    };
 
     // Guards against "Uncaught Error: Map container is already initialized"
     // -- Leaflet stamps a _leaflet_id property directly on the DOM node the
@@ -267,19 +294,36 @@ function boot() {
     // highlight (toggles .active by matching data-speed).
     setSpeedInternal(1);
 
+    /* Campus mode: the walk runs from the boarding house to the campus.
+       route() takes the property as origin (path[0]) and the campus as
+       the last point -- everything else in this file (avatar start,
+       waypoints, Street View heading) just follows currentPath in
+       order, so reversing these two arguments reverses the whole walk.
+       That is exactly what GPS mode does: see computeRouteFromMe(). */
     function computeRoute(idx) {
-        const campusCoords = schools[idx].coords;
+        originMode = 'campus';
         currentCampusName = schools[idx].name;
         document.getElementById('route-subtitle').innerText = `To ${currentCampusName}`;
+        runRoute(house.coords, schools[idx].coords, house.name, currentCampusName);
+    }
 
-        // The walk starts at the boarding house and ends at the campus,
-        // so route() takes the property as origin (path[0]) and the
-        // campus as destination (the last point) -- everything else in
-        // this file (avatar start, waypoints, Street View heading) just
-        // follows currentPath in order, so reversing these two
-        // arguments is the one change that reverses the whole walk.
+    /* GPS mode: the student is standing somewhere and wants to get TO
+       the boarding house, so the origin is their live position and the
+       destination is the listing -- the reverse of campus mode. */
+    function computeRouteFromMe() {
+        if (!myPos) return;
+        originMode = 'gps';
+        document.getElementById('route-subtitle').innerText = `From your location to ${house.name}`;
+        lastRoutedFrom = myPos.slice();
+        runRoute(myPos, house.coords, 'your location', house.name);
+    }
+
+    function runRoute(fromCoords, toCoords, fromName, toName) {
+        routeFromName = fromName;
+        routeToName = toName;
+
         const t0 = performance.now();
-        const result = EBoardRouter.route(house.coords, campusCoords);
+        const result = EBoardRouter.route(fromCoords, toCoords);
         const routeMs = performance.now() - t0;
 
         currentPath = result.path;
@@ -289,15 +333,13 @@ function boot() {
 
         waypoints = buildWaypoints();
         // Diagnostic: waypoint 0 (traveled distance 0) is supposed to be
-        // the listing's exact stored coordinate, since route()'s returned
-        // path always starts with the "from" argument verbatim. Logged
-        // every recompute so a coordinate mismatch here is visible without
-        // needing a debugger -- compare this to whatever coordinate a
-        // standalone check (e.g. streetview-coverage.js) used, since that
-        // script's LOCATIONS array is hand-maintained and can silently
-        // drift from what's actually saved in eboard_v12.
+        // the origin's exact coordinate, since route()'s returned path
+        // always starts with the "from" argument verbatim. In campus mode
+        // that origin is the listing, so a mismatch means the stored
+        // coordinate drifted; in GPS mode it is the live fix. Logged every
+        // recompute so a mismatch is visible without a debugger.
         if (waypoints[0]) {
-            console.log('[E-Board Directions] house.coords:', house.coords,
+            console.log(`[E-Board Directions] origin (${routeFromName}):`, fromCoords,
                 ' waypoint[0] (traveled=0):', [waypoints[0].lat, waypoints[0].lng]);
         }
         metadataCache = new Map();
@@ -326,9 +368,11 @@ function boot() {
             color: '#9B72FF', weight: 5, opacity: 0.85,
             dashArray: result.estimated ? '8, 10' : null
         }).addTo(map);
-        // currentPath[0] is the property (route's origin now) -- the
-        // campus is the last point.
-        campusMarker = L.circleMarker(currentPath[currentPath.length - 1], { color: 'red' }).addTo(map).bindPopup('Campus');
+        // currentPath[0] is the origin -- the destination is the last
+        // point. Which is which depends on the mode, so the popup is
+        // named rather than hardcoded to "Campus".
+        campusMarker = L.circleMarker(currentPath[currentPath.length - 1], { color: 'red' })
+            .addTo(map).bindPopup(escapeHtml(routeToName));
 
         map.fitBounds(routeLine.getBounds(), { padding: [40, 40] });
     }
@@ -346,8 +390,10 @@ function boot() {
 
     function renderSegmentList() {
         const list = document.getElementById('segment-list');
-        const propertyName = escapeHtml(house.name);
-        const campusName = escapeHtml(currentCampusName);
+        // In campus mode these are (listing -> campus); in GPS mode they
+        // are (your location -> listing).
+        const propertyName = escapeHtml(routeFromName);
+        const campusName = escapeHtml(routeToName);
         let prevBearing = null;
         list.innerHTML = segments.map((seg, i) => {
             const compass = compassLabel(seg.bearingDeg);
@@ -373,6 +419,144 @@ function boot() {
 
     function formatMeters(m) {
         return m >= 1000 ? (m / 1000).toFixed(2) + ' km' : Math.round(m) + ' m';
+    }
+
+    /* ======================= live location =======================
+       Routes from where the student actually is, using the same
+       EBoardRouter the campus mode uses -- no third-party directions
+       service. The only new input is the browser's Geolocation API.   */
+
+    function gpsStatus(msg, kind) {
+        const el = document.getElementById('gps-status');
+        if (!el) return;
+        el.innerText = msg;
+        el.className = 'gps-status' + (kind ? ' gps-' + kind : '');
+    }
+
+    function setGpsButton(on) {
+        const btn = document.getElementById('gps-btn');
+        if (!btn) return;
+        btn.innerText = on ? '■ Stop following me' : '📍 Use my current location';
+        btn.classList.toggle('active', on);
+    }
+
+    /* recompute=false is used when the caller is ABOUT to compute a
+       route itself (the campus picker), so the route isn't built twice. */
+    function stopGps(recompute = true) {
+        if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+        if (myMarker) { map.removeLayer(myMarker); myMarker = null; }
+        if (myAccuracyCircle) { map.removeLayer(myAccuracyCircle); myAccuracyCircle = null; }
+        myPos = null; lastRoutedFrom = null;
+        setGpsButton(false);
+        gpsStatus('');
+        // Fall back to the campus route the page opened with.
+        if (recompute) computeRoute(document.getElementById('campus-select').selectedIndex);
+    }
+
+    function toggleGps() {
+        if (watchId !== null) { stopGps(); return; }
+
+        if (!('geolocation' in navigator)) {
+            gpsStatus('This browser does not support location.', 'err');
+            return;
+        }
+        /* The single most common reason this fails. Browsers only expose
+           geolocation in a secure context: https://, or localhost. Opened
+           over a plain http:// LAN address -- which is exactly what
+           happens when a phone is pointed at a laptop running XAMPP --
+           the call does not error quickly, it just never succeeds. Said
+           plainly here rather than leaving the user watching a spinner. */
+        if (!window.isSecureContext) {
+            gpsStatus('Location needs a secure connection. This page is on ' +
+                      location.protocol + '// — open E-BOARD over https:// ' +
+                      '(or on localhost) and the browser will allow GPS.', 'err');
+            return;
+        }
+
+        gpsStatus('Getting your location…', 'wait');
+        setGpsButton(true);
+        watchId = navigator.geolocation.watchPosition(onPosition, onPositionError, {
+            enableHighAccuracy: true,   // the phone's GPS, not the coarse network fix
+            maximumAge: 5000,
+            timeout: 20000
+        });
+    }
+
+    function onPosition(pos) {
+        if (watchId === null) return;      // a late callback after stopGps()
+        const lat = pos.coords.latitude, lng = pos.coords.longitude;
+        const accuracy = pos.coords.accuracy;   // metres, 95% confidence
+        myPos = [lat, lng];
+
+        // The blue dot and its accuracy ring. Kept separate from the 🚶
+        // animation avatar on purpose: the avatar replays the route, this
+        // is where the student really is.
+        if (!myMarker) {
+            myMarker = L.circleMarker(myPos, {
+                radius: 8, color: '#fff', weight: 3,
+                fillColor: '#1a73e8', fillOpacity: 1
+            }).addTo(map).bindPopup('You are here');
+            myAccuracyCircle = L.circle(myPos, {
+                radius: accuracy, color: '#1a73e8', weight: 1,
+                fillColor: '#1a73e8', fillOpacity: 0.12
+            }).addTo(map);
+        } else {
+            myMarker.setLatLng(myPos);
+            myAccuracyCircle.setLatLng(myPos).setRadius(accuracy);
+        }
+
+        /* Is this fix anywhere near the road data the app carries? The
+           router would happily snap a fix in Manila to the nearest
+           Legazpi road and return a confident-looking route. */
+        const snap = EBoardRouter.nearestNodeDistance(lat, lng);
+        if (snap !== null && snap > GPS_MAX_SNAP_M) {
+            /* Out of range is a waiting state, not a failure: the watch is
+               deliberately left running, so travelling into Legazpi starts
+               the routing on its own with nothing to press. Worded and
+               coloured to say that, rather than looking like a dead end
+               next to a red "Stop following me" button. */
+            gpsStatus(`You're outside the area E-BOARD has road data for — the ` +
+                      `nearest mapped road is ${(snap / 1000).toFixed(1)} km away. ` +
+                      `Still following you: the route will compute as soon as ` +
+                      `you're in range.`, 'wait');
+            return;
+        }
+
+        const moved = lastRoutedFrom
+            ? EBoardRouter.haversine(lastRoutedFrom[0], lastRoutedFrom[1], lat, lng)
+            : Infinity;
+        if (moved >= GPS_RECOMPUTE_M) computeRouteFromMe();
+
+        gpsStatus(`Located to within ${Math.round(accuracy)} m. ` +
+                  `Following you as you walk — the route updates every ` +
+                  `${GPS_RECOMPUTE_M} m.`, 'ok');
+    }
+
+    /* Only a denied permission is fatal. POSITION_UNAVAILABLE and TIMEOUT
+       are transient -- a phone walking under a roof, into a jeepney, or
+       past a tall building loses its fix for a moment and gets it back.
+       watchPosition() keeps trying on its own after a non-fatal error, so
+       tearing the watch down here would end tracking permanently for a
+       hiccup that resolves itself seconds later. The route already on
+       screen stays up; the status line says it has gone stale. */
+    function onPositionError(err) {
+        if (watchId === null) return;      // a late callback after stopGps()
+
+        if (err.code === 1) {              // PERMISSION_DENIED
+            navigator.geolocation.clearWatch(watchId);
+            watchId = null;
+            setGpsButton(false);
+            gpsStatus('You declined location access. Allow it for this site in ' +
+                      'your browser settings, then tap the button again.', 'err');
+            return;
+        }
+
+        const transient = {
+            2: 'Lost your location for a moment — still trying. ' +
+               'Moving somewhere with a clearer view of the sky helps.',
+            3: 'Waiting for a GPS fix — still trying.'
+        };
+        gpsStatus(transient[err.code] || ('Location problem: ' + err.message), 'wait');
     }
 
     function placeAvatar(dist) {
@@ -645,6 +829,10 @@ function boot() {
     window.toggleAnimation = () => { playing ? stopAnimation() : startAnimation(); };
     window.setSpeed = setSpeedInternal;
     window.setViewMode = setViewMode;
+    // Called from the onclick in directions.html. These are declared
+    // inside boot(), so they are NOT on window by themselves.
+    window.toggleGps = toggleGps;
+    window.stopGps = stopGps;
 
     document.getElementById('route-subtitle').innerText = 'Loading Legazpi road network…';
     const initStart = performance.now();

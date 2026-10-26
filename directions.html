@@ -53,7 +53,15 @@
             <p class="compute-note" id="compute-note">Computed in – ms over – nodes.</p>
 
             <div class="origin-field">
-                <label for="campus-select">Recompute from a different campus</label>
+                <label>Route from</label>
+                <button type="button" id="gps-btn" class="gps-btn" onclick="toggleGps()">
+                    📍 Use my current location
+                </button>
+                <p id="gps-status" class="gps-status"></p>
+            </div>
+
+            <div class="origin-field">
+                <label for="campus-select">…or from a campus</label>
                 <select id="campus-select"></select>
             </div>
 

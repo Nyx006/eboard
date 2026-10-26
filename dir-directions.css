@@ -50,6 +50,21 @@ html, body { height: 100%; }
 
 .origin-field label { font-size: 13px; color: #444; font-weight: 600; display: block; margin-bottom: 8px; }
 
+/* Live-location control. Full width and 48px tall because the whole
+   point of this feature is that it gets tapped on a phone, outdoors,
+   one-handed. */
+.gps-btn { width: 100%; min-height: 48px; border: none; border-radius: 12px; background: #9B72FF;
+           color: white; font-family: inherit; font-size: 15px; font-weight: 700; cursor: pointer;
+           transition: background 0.2s; }
+.gps-btn:hover { background: #8655ff; }
+.gps-btn.active { background: #c0392b; }
+.gps-btn.active:hover { background: #a93226; }
+.gps-status { font-size: 13px; line-height: 1.45; margin: 8px 0 0; color: #555; }
+.gps-status:empty { margin: 0; }
+.gps-ok   { color: #1e7e34; }
+.gps-err  { color: #c0392b; }
+.gps-wait { color: #9A6B00; }
+
 .player-controls { border-top: 1px solid #eee; border-bottom: 1px solid #eee; padding: 18px 0; display: flex; flex-direction: column; gap: 14px; }
 .player-row { display: flex; align-items: center; gap: 14px; }
 .play-btn { background: #9B72FF; color: white; border: none; width: 46px; height: 46px; border-radius: 50%; font-size: 18px; cursor: pointer; flex-shrink: 0; transition: 0.2s; display: flex; align-items: center; justify-content: center; }

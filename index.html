@@ -98,8 +98,9 @@
                 <div class="search-inner">
                     <input type="text" id="search-input" placeholder="Search by name or location..." oninput="renderAll()">
                     <select id="school-select" onchange="updateSchool()"></select>
-                    <!-- Collapsed by default: on a phone, five always-open
-                         filters would push every listing below the fold. -->
+                    <!-- Collapsed by default: on a phone, seventeen
+                         always-open filters would push every listing far
+                         below the fold. -->
                     <details class="filter-panel" id="filter-panel">
                         <summary>Filters <span id="filter-count" class="filter-count"></span></summary>
                         <div class="filter-grid">
@@ -133,9 +134,56 @@
                                     <option value="4">4</option>
                                 </select>
                             </div>
-                            <label class="filter-check"><input type="checkbox" id="filter-pets" onchange="renderAll()"> Pets allowed</label>
-                            <label class="filter-check"><input type="checkbox" id="filter-vacant" onchange="renderAll()"> Vacancies only</label>
+                            <div class="filter-field">
+                                <label for="filter-curfew">Curfew</label>
+                                <!-- "or later" includes houses with NO curfew:
+                                     a student who needs to be out past 10
+                                     is served by a house with no curfew at
+                                     all. See normaliseCurfew() in script.js. -->
+                                <select id="filter-curfew" onchange="renderAll()">
+                                    <option value="">Any curfew</option>
+                                    <option value="none">No curfew at all</option>
+                                    <option value="21">9:00 PM or later</option>
+                                    <option value="22">10:00 PM or later</option>
+                                    <option value="23">11:00 PM or later</option>
+                                </select>
+                            </div>
                         </div>
+
+                        <div class="filter-section">
+                            <p class="filter-section-label">Amenities</p>
+                            <div class="filter-chips">
+                                <label class="filter-check"><input type="checkbox" id="filter-am-wifi" onchange="renderAll()"> 📶 WiFi</label>
+                                <label class="filter-check"><input type="checkbox" id="filter-am-aircon" onchange="renderAll()"> ❄️ Aircon</label>
+                                <label class="filter-check"><input type="checkbox" id="filter-am-kitchen" onchange="renderAll()"> 🍳 Kitchen</label>
+                                <label class="filter-check"><input type="checkbox" id="filter-am-water" onchange="renderAll()"> 💧 Water</label>
+                                <label class="filter-check"><input type="checkbox" id="filter-am-cctv" onchange="renderAll()"> 📷 CCTV</label>
+                                <label class="filter-check"><input type="checkbox" id="filter-am-bed" onchange="renderAll()"> 🛏️ Bed</label>
+                            </div>
+                        </div>
+
+                        <div class="filter-section">
+                            <!-- Each means "the landowner explicitly said yes".
+                                 A listing that left the rule blank is not a
+                                 match -- it hasn't promised anything. -->
+                            <p class="filter-section-label">House rules <span class="filter-section-hint">· must be explicitly allowed</span></p>
+                            <div class="filter-chips">
+                                <label class="filter-check"><input type="checkbox" id="filter-pets" onchange="renderAll()"> Pets</label>
+                                <label class="filter-check"><input type="checkbox" id="filter-smoking" onchange="renderAll()"> Smoking</label>
+                                <label class="filter-check"><input type="checkbox" id="filter-cooking" onchange="renderAll()"> Cooking</label>
+                                <label class="filter-check"><input type="checkbox" id="filter-visitors" onchange="renderAll()"> Visitors</label>
+                                <label class="filter-check"><input type="checkbox" id="filter-alcohol" onchange="renderAll()"> Alcohol</label>
+                                <label class="filter-check"><input type="checkbox" id="filter-overnight" onchange="renderAll()"> Overnight guests</label>
+                            </div>
+                        </div>
+
+                        <div class="filter-section">
+                            <div class="filter-chips">
+                                <label class="filter-check"><input type="checkbox" id="filter-vacant" onchange="renderAll()"> Vacancies only</label>
+                                <label class="filter-check"><input type="checkbox" id="filter-verified" onchange="renderAll()"> ✅ Verified landowners only</label>
+                            </div>
+                        </div>
+
                         <button type="button" class="filter-clear" onclick="clearFilters()">Clear filters</button>
                     </details>
                 </div>

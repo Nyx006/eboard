@@ -1819,6 +1819,27 @@ function updateSchool() {
     renderAll();
 }
 
+/* Is this listing the signed-in landowner's own?
+
+   The prototype had exactly one landowner, so "every listing" and "my
+   listings" were the same set and the dashboard never had to filter.
+   With a database there are several owners, and a landowner's bootstrap
+   includes every APPROVED listing (they need to see the directory too),
+   so the dashboard was showing other people's properties with Edit,
+   Boarders and Remove beside them. The server refuses all three on a
+   listing you do not own, so nothing could be damaged -- but it reads
+   like a permissions hole.
+
+   Deliberately FAILS OPEN: with no server identity, or on a listing
+   carrying no ownerId, it answers true and the dashboard behaves
+   exactly as it always did. That keeps the no-database build unchanged
+   rather than risking an empty dashboard there. */
+function isMyListing(h) {
+    const me = (typeof window !== 'undefined') && window.EBOARD_SERVER_USER;
+    if (!me || h.ownerId === undefined || h.ownerId === null) return true;
+    return Number(h.ownerId) === Number(me.id);
+}
+
 function renderAll() {
     const grid = document.getElementById('boarding-house-grid');
     const dash = document.getElementById('dashboard-body');
@@ -1909,6 +1930,9 @@ function renderAll() {
                 </div>`;
         }
 
+        // The dashboard is "my listings", not the whole directory.
+        if (!isMyListing(h)) return;
+
         dash.innerHTML += `<tr>
             <td style="font-weight:600; color:#9B72FF; font-size:16px;">${escapeHtml(h.name)}</td>
             <td>${escapeHtml(h.location)}</td>
@@ -1928,8 +1952,12 @@ function renderAll() {
             </td>
         </tr>`;
     });
-    document.getElementById('stat-total').innerText = houses.length;
-    document.getElementById('stat-active').innerText = houses.filter(h => h.available > 0).length;
+    // Counted over the owner's own listings, for the same reason the
+    // table is: "Total Listing: 5" alongside five other people's
+    // properties was claiming them.
+    const mine = houses.filter(isMyListing);
+    document.getElementById('stat-total').innerText = mine.length;
+    document.getElementById('stat-active').innerText = mine.filter(h => h.available > 0).length;
     updateFilterSummary(filters, shownCount, approvedCount);
     if (shownCount === 0 && approvedCount > 0) {
         grid.innerHTML = `<div class="grid-empty">

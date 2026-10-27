@@ -186,7 +186,11 @@ function boot() {
        route was computed from, so the router only re-runs once the
        student has actually moved. */
     let originMode = 'campus';
+    // Which of the two live-location buttons is driving the route.
+    let gpsTarget = 'house';
     let myPos = null, lastRoutedFrom = null;
+    // Whether the latest fix is close enough to a mapped road to route from.
+    let myPosInRange = false;
     let myMarker = null, myAccuracyCircle = null, watchId = null;
 
     // Re-run Dijkstra once the student has moved this far. Every fix
@@ -253,6 +257,13 @@ function boot() {
     // Picking a campus takes over from live tracking, otherwise the next
     // GPS fix would pull the route straight back to "from your location".
     select.onchange = () => {
+        /* While following to a campus, changing the campus re-aims the
+           live walk instead of ending it. Otherwise the picker takes
+           over, as it did before live location existed. */
+        if (watchId !== null && gpsTarget === 'campus') {
+            if (myPos && myPosInRange) computeRouteFromMe();
+            return;
+        }
         if (watchId !== null) stopGps(false);
         computeRoute(select.selectedIndex);
     };
@@ -310,12 +321,26 @@ function boot() {
     /* GPS mode: the student is standing somewhere and wants to get TO
        the boarding house, so the origin is their live position and the
        destination is the listing -- the reverse of campus mode. */
+    /* The destination depends on which button started the walk: the
+       listing, or the campus currently chosen below. Everything else --
+       the follow, the recompute threshold, the out-of-range guard -- is
+       identical, so the two share one code path. */
+    function gpsDestination() {
+        if (gpsTarget === 'campus') {
+            const idx = document.getElementById('campus-select').selectedIndex;
+            const campus = schools[idx] || schools[0];
+            return { coords: campus.coords, name: campus.name };
+        }
+        return { coords: house.coords, name: house.name };
+    }
+
     function computeRouteFromMe() {
         if (!myPos) return;
         originMode = 'gps';
-        document.getElementById('route-subtitle').innerText = `From your location to ${house.name}`;
+        const dest = gpsDestination();
+        document.getElementById('route-subtitle').innerText = `From your location to ${dest.name}`;
         lastRoutedFrom = myPos.slice();
-        runRoute(myPos, house.coords, 'your location', house.name);
+        runRoute(myPos, dest.coords, 'your location', dest.name);
     }
 
     function runRoute(fromCoords, toCoords, fromName, toName) {
@@ -433,11 +458,23 @@ function boot() {
         el.className = 'gps-status' + (kind ? ' gps-' + kind : '');
     }
 
+    const GPS_BUTTONS = {
+        house:  { id: 'gps-btn',        idle: '📍 To this boarding house' },
+        campus: { id: 'gps-btn-campus', idle: '🎓 To my campus' }
+    };
+
+    /* Only the button for the destination being followed turns into
+       "Stop"; the other keeps its own label so it can switch the walk
+       without stopping and re-acquiring the fix. */
     function setGpsButton(on) {
-        const btn = document.getElementById('gps-btn');
-        if (!btn) return;
-        btn.innerText = on ? '■ Stop following me' : '📍 Use my current location';
-        btn.classList.toggle('active', on);
+        Object.keys(GPS_BUTTONS).forEach(target => {
+            const b = GPS_BUTTONS[target];
+            const el = document.getElementById(b.id);
+            if (!el) return;
+            const active = on && target === gpsTarget;
+            el.innerText = active ? '■ Stop following me' : b.idle;
+            el.classList.toggle('active', active);
+        });
     }
 
     /* recompute=false is used when the caller is ABOUT to compute a
@@ -446,15 +483,31 @@ function boot() {
         if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
         if (myMarker) { map.removeLayer(myMarker); myMarker = null; }
         if (myAccuracyCircle) { map.removeLayer(myAccuracyCircle); myAccuracyCircle = null; }
-        myPos = null; lastRoutedFrom = null;
+        myPos = null; lastRoutedFrom = null; myPosInRange = false;
         setGpsButton(false);
         gpsStatus('');
         // Fall back to the campus route the page opened with.
         if (recompute) computeRoute(document.getElementById('campus-select').selectedIndex);
     }
 
-    function toggleGps() {
-        if (watchId !== null) { stopGps(); return; }
+    function toggleGps(target) {
+        target = target === 'campus' ? 'campus' : 'house';
+
+        // Pressing the button that is already following stops it.
+        if (watchId !== null && gpsTarget === target) { stopGps(); return; }
+
+        /* Pressing the OTHER button while following just changes where the
+           walk is headed. The watch, the fix and the blue dot are all kept,
+           so switching does not cost a re-acquire -- which outdoors can
+           take several seconds. */
+        if (watchId !== null) {
+            gpsTarget = target;
+            setGpsButton(true);
+            if (myPos && myPosInRange) computeRouteFromMe();
+            return;
+        }
+
+        gpsTarget = target;
 
         if (!('geolocation' in navigator)) {
             gpsStatus('This browser does not support location.', 'err');
@@ -509,7 +562,8 @@ function boot() {
            router would happily snap a fix in Manila to the nearest
            Legazpi road and return a confident-looking route. */
         const snap = EBoardRouter.nearestNodeDistance(lat, lng);
-        if (snap !== null && snap > GPS_MAX_SNAP_M) {
+        myPosInRange = !(snap !== null && snap > GPS_MAX_SNAP_M);
+        if (!myPosInRange) {
             /* Out of range is a waiting state, not a failure: the watch is
                deliberately left running, so travelling into Legazpi starts
                the routing on its own with nothing to press. Worded and

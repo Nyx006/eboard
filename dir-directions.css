@@ -59,6 +59,7 @@ html, body { height: 100%; }
 .gps-btn:hover { background: #8655ff; }
 .gps-btn.active { background: #c0392b; }
 .gps-btn.active:hover { background: #a93226; }
+.gps-btn + .gps-btn { margin-top: 8px; }
 .gps-status { font-size: 13px; line-height: 1.45; margin: 8px 0 0; color: #555; }
 .gps-status:empty { margin: 0; }
 .gps-ok   { color: #1e7e34; }

@@ -53,9 +53,15 @@
             <p class="compute-note" id="compute-note">Computed in – ms over – nodes.</p>
 
             <div class="origin-field">
-                <label>Route from</label>
-                <button type="button" id="gps-btn" class="gps-btn" onclick="toggleGps()">
-                    📍 Use my current location
+                <!-- Two destinations from the same live position: a student
+                     looking for a room walks TO the house; a student already
+                     boarding there walks to class. Both follow as you go. -->
+                <label>Walk me there from where I am</label>
+                <button type="button" id="gps-btn" class="gps-btn" onclick="toggleGps('house')">
+                    📍 To this boarding house
+                </button>
+                <button type="button" id="gps-btn-campus" class="gps-btn" onclick="toggleGps('campus')">
+                    🎓 To my campus
                 </button>
                 <p id="gps-status" class="gps-status"></p>
             </div>

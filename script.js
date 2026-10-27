@@ -3423,10 +3423,15 @@ function renderBoarders() {
        serverStudentId is the real database id; studentId is the fixed
        'stu-1' slot the localStorage prototype uses. The database build
        needs the former, the prototype only has the latter. */
-    const already = new Set(mine.map(t => t.studentId));
+    /* Compared as strings on BOTH sides, and against the same id the
+       Confirm button sends. A tenancy from the database carries the
+       numeric user id while a conversation carries the prototype's
+       'stu-1' slot, so comparing them raw never matched and a student
+       stayed in the candidate list after being confirmed. */
+    const already = new Set(mine.map(t => String(t.studentId)));
     const seen = new Set();
     const candidates = conversations
-        .filter(c => c.propertyId === id && !already.has(c.studentId))
+        .filter(c => c.propertyId === id && !already.has(String(c.serverStudentId ?? c.studentId)))
         .filter(c => !seen.has(c.studentId) && seen.add(c.studentId));
 
     document.getElementById('boarders-candidates').innerHTML = candidates.length ? candidates.map(c => `

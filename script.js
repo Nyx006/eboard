@@ -3419,7 +3419,10 @@ function renderBoarders() {
         </div>`).join('')
         : '<p class="boarder-empty">Nobody confirmed yet. Until you confirm someone, no review can be left on this property.</p>';
 
-    // Enquirers who are not already on the list above.
+    /* Enquirers who are not already on the list above.
+       serverStudentId is the real database id; studentId is the fixed
+       'stu-1' slot the localStorage prototype uses. The database build
+       needs the former, the prototype only has the latter. */
     const already = new Set(mine.map(t => t.studentId));
     const seen = new Set();
     const candidates = conversations
@@ -3431,7 +3434,7 @@ function renderBoarders() {
             <div class="who">${escapeHtml(c.studentName)}
                 <span class="when">enquired about this property</span></div>
             <button class="edit-btn"
-                onclick="confirmBoarder('${c.studentId}', '${escapeHtml(c.studentName).replace(/'/g, "\\'")}')">
+                onclick="confirmBoarder('${c.serverStudentId ?? c.studentId}', '${escapeHtml(c.studentName).replace(/'/g, "\\'")}')">
                 Confirm as boarder</button>
         </div>`).join('')
         : '<p class="boarder-empty">No enquiries yet.</p>';

@@ -1107,7 +1107,7 @@ function syncVerificationTier() {
     const siteRecord = siteVerifications.find(v => v.user_id === LANDOWNER_ID);
     const tier = computeVerificationTier(verificationDocs.filter(d => d.user_id === LANDOWNER_ID), siteRecord);
     landownerProfile.verificationTier = tier;
-    houses.forEach(h => { if (h.owner === 'Ana Ramos') h.verificationTier = tier; });
+    houses.forEach(h => { if (iOwnListing(h)) h.verificationTier = tier; });
 }
 
 /* SHA-256 of the ORIGINAL uploaded file, not the resized/recompressed
@@ -1838,6 +1838,26 @@ function isMyListing(h) {
     const me = (typeof window !== 'undefined') && window.EBOARD_SERVER_USER;
     if (!me || h.ownerId === undefined || h.ownerId === null) return true;
     return Number(h.ownerId) === Number(me.id);
+}
+
+/* The same question asked STRICTLY, for decisions about permission
+   rather than display. Where isMyListing() answers "show it unless we
+   know otherwise", this answers "no unless we can prove it".
+
+   The two call sites used to compare h.owner against the literal
+   'Ana Ramos' -- the prototype's single landowner. Against a database
+   where owners have their own names that comparison never matched, so
+   a landowner silently lost the ability to report a review on their
+   own property, and the verification badge was never applied to their
+   listings. With no server it falls back to the prototype's one
+   landowner, so that build is unchanged. */
+function iOwnListing(h) {
+    if (!h) return false;
+    const me = (typeof window !== 'undefined') && window.EBOARD_SERVER_USER;
+    if (me && h.ownerId !== undefined && h.ownerId !== null) {
+        return Number(h.ownerId) === Number(me.id);
+    }
+    return h.owner === ROLE_IDENTITY.landowner.name;
 }
 
 function renderAll() {
@@ -3568,7 +3588,7 @@ function reportReview(reviewId) {
 
     const h = houses.find(x => x.id === review.propertyId);
     const allowed = currentUser.role === 'student' ||
-        (currentUser.role === 'landowner' && h?.owner === 'Ana Ramos');
+        (currentUser.role === 'landowner' && iOwnListing(h));
     if (!allowed) return;
 
     reloadReviewReports();
@@ -3649,7 +3669,7 @@ function renderReviews(propertyId) {
     // specific property — mirrored inside reportReview() itself since a
     // hidden button is only a UI nicety, not enforcement.
     const canReport = currentUser?.role === 'student' ||
-        (currentUser?.role === 'landowner' && h?.owner === 'Ana Ramos');
+        (currentUser?.role === 'landowner' && iOwnListing(h));
 
     const visible = reviews
         .filter(r => r.propertyId === propertyId && r.status === 'approved')

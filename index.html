@@ -243,6 +243,7 @@
                                style="display:inline-block; margin-top:0; padding:15px 30px; font-size:16px;">Directions</a>
                             <button id="write-review-btn" class="add-btn" onclick="openReviewModal()">Write a Review</button>
                         </div>
+                        <p id="review-gate-note" class="review-gate-note"></p>
                     </div>
                     <div id="rating-summary" class="rating-summary"></div>
                     <div id="reviews-list"></div>
@@ -470,6 +471,26 @@
                 <input type="hidden" id="edit-lat"><input type="hidden" id="edit-lng">
                 <button type="submit" id="update-property-btn" class="main-auth-btn">Update Property</button>
             </form>
+        </div>
+    </div>
+
+    <!-- Who the owner has confirmed as boarding at one listing. Only a
+         confirmed boarder (now or formerly) can review that listing. -->
+    <div id="boarders-modal" class="modal" onclick="closeBoardersModal()">
+        <div class="modal-form-content" style="max-width: 560px;" onclick="event.stopPropagation()">
+            <span class="close-btn" onclick="closeBoardersModal()">&times;</span>
+            <h2 style="color:#9B72FF; margin-bottom:8px; font-size: 26px;">Boarders</h2>
+            <p id="boarders-prop-name" style="color:#666; font-size:15px; margin-bottom:14px;"></p>
+            <p class="boarders-explainer">
+                Only students you confirm here can leave a review on this
+                property. Confirming someone does not change the vacancy count.
+            </p>
+
+            <h4 class="boarders-heading">Confirmed</h4>
+            <div id="boarders-confirmed"></div>
+
+            <h4 class="boarders-heading">Students who enquired</h4>
+            <div id="boarders-candidates"></div>
         </div>
     </div>
 

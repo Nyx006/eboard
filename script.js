@@ -390,6 +390,17 @@ const defaultReviews = [
 // verification_documents is its own table rather than living inside
 // a user record.
 const REVIEW_REPORTS_KEY = 'eboard_review_reports_v15';
+
+/* Who actually boards where. The system had no such record until
+   2026-10-27, which is why any signed-in student could review any
+   listing: there was no fact to check against. A tenancy is created
+   only by the LANDOWNER of the listing confirming a student, never by
+   the student, so it cannot be self-asserted.
+
+   Ended tenancies are kept and still permit a review -- a former
+   boarder has the most to say about a place, and deleting the record
+   would silently revoke a review right they had already earned. */
+const TENANCIES_KEY = 'eboard_tenancies_v1';
 const REPORT_REASONS = ['Spam', 'Fake / not a real stay', 'Offensive language', 'Other'];
 
 /* v19 (renamed from eboard_convs_v18): conversations were keyed by
@@ -422,6 +433,7 @@ let verificationDocs = JSON.parse(localStorage.getItem(VERIFICATION_KEY)) || [];
 let siteVerifications = JSON.parse(localStorage.getItem(SITE_VERIFICATION_KEY)) || [];
 let reviewReports = JSON.parse(localStorage.getItem(REVIEW_REPORTS_KEY)) || [];
 let studentVerificationDocs = JSON.parse(localStorage.getItem(STUDENT_VERIFICATION_KEY)) || [];
+let tenancies = JSON.parse(localStorage.getItem(TENANCIES_KEY)) || [];
 // Singleton, same pattern as landownerProfile above -- there is exactly
 // one student account (ROLE_IDENTITY.student), so no id-keying needed.
 // `school` is free text the student types themselves (not limited to the
@@ -678,6 +690,7 @@ function reloadSiteVerifications() { siteVerifications = JSON.parse(localStorage
 function reloadReviewReports() { reviewReports = JSON.parse(localStorage.getItem(REVIEW_REPORTS_KEY)) || reviewReports; }
 function reloadStudentVerificationDocs() { studentVerificationDocs = JSON.parse(localStorage.getItem(STUDENT_VERIFICATION_KEY)) || studentVerificationDocs; }
 function reloadStudentProfile() { studentProfile = JSON.parse(localStorage.getItem(STUDENT_PROFILE_KEY)) || studentProfile; }
+function reloadTenancies() { tenancies = JSON.parse(localStorage.getItem(TENANCIES_KEY)) || tenancies; }
 
 /* `mutated` names the key(s) (matching the reload*() functions above,
    e.g. ['houses']) that THIS call is responsible for persisting from
@@ -703,6 +716,7 @@ function saveData(mutated = []) {
     if (!keep.has('reviewReports'))            reloadReviewReports();
     if (!keep.has('studentVerificationDocs'))  reloadStudentVerificationDocs();
     if (!keep.has('studentProfile'))           reloadStudentProfile();
+    if (!keep.has('tenancies'))                reloadTenancies();
 
     try {
         localStorage.setItem('eboard_v12', JSON.stringify(houses));
@@ -714,6 +728,7 @@ function saveData(mutated = []) {
         localStorage.setItem(SITE_VERIFICATION_KEY, JSON.stringify(siteVerifications));
         localStorage.setItem(REVIEW_REPORTS_KEY, JSON.stringify(reviewReports));
         localStorage.setItem(STUDENT_VERIFICATION_KEY, JSON.stringify(studentVerificationDocs));
+        localStorage.setItem(TENANCIES_KEY, JSON.stringify(tenancies));
         localStorage.setItem(STUDENT_PROFILE_KEY, JSON.stringify(studentProfile));
     } catch (e) {
         alert("Browser storage limit reached. Try uploading fewer or smaller photos.");
@@ -1907,6 +1922,7 @@ function renderAll() {
                 <div class="table-action-btns">
                     <button class="edit-btn" onclick="openDetails(${h.id})">View</button>
                     <button class="edit-btn" onclick="openEditListing(${h.id})">Edit</button>
+                    <button class="edit-btn" onclick="openBoardersModal(${h.id})">Boarders</button>
                     <button class="delete-btn" onclick="deleteListing(${h.id})">Remove</button>
                 </div>
             </td>
@@ -3325,9 +3341,27 @@ function hasAlreadyReviewed(propertyId) {
     return reviews.some(r => r.propertyId === propertyId && r.studentId === currentUser?.id);
 }
 
+/* A student may review a listing only if the landowner has confirmed
+   them as a boarder there, now or in the past. Enforced on the server
+   too (routes/reviews.php) -- this copy is so the interface can explain
+   itself rather than letting someone fill in a form that will be
+   rejected. In the localStorage build there is no server, so this is
+   the only check and it is defeatable from devtools; that is a property
+   of the prototype, not of the rule. */
+function tenancyFor(propertyId, studentId) {
+    reloadTenancies();
+    return tenancies.find(t => t.propertyId === propertyId && t.studentId === studentId) || null;
+}
+function canReview(propertyId, studentId) { return !!tenancyFor(propertyId, studentId); }
+
 function openReviewModal() {
     if (!currentPropertyId) return;
     if (!requireAccount('review')) return;
+    if (!canReview(currentPropertyId, currentUser.id)) {
+        return alert('Only boarders can review this property.\n\n' +
+                     'The owner confirms who boards there. Once they have ' +
+                     'confirmed you, the review form opens here.');
+    }
     const h = houses.find(x => x.id === currentPropertyId);
     document.getElementById('review-prop-name').innerText = h ? h.name : '';
     pendingStarValue = 0;
@@ -3337,6 +3371,106 @@ function openReviewModal() {
 }
 
 function closeReviewModal() { document.getElementById('review-modal').style.display = 'none'; }
+
+/* ---- Boarder confirmation (landowner) ----------------------------
+   The owner of a listing says who boards there. That record is the
+   only thing that opens the review form, so it is deliberately not
+   something a student can assert about themselves.
+
+   Candidates are drawn from the students who have already enquired
+   about this property, because that is the only signal the prototype
+   has that the two parties know each other. It is a convenience for
+   finding the name, NOT the permission itself -- the owner still has
+   to confirm each one. */
+let boardersListingId = null;
+
+function openBoardersModal(listingId) {
+    boardersListingId = listingId;
+    reloadHouses();
+    const h = houses.find(x => x.id === listingId);
+    document.getElementById('boarders-prop-name').innerText = h ? h.name : '';
+    renderBoarders();
+    document.getElementById('boarders-modal').style.display = 'block';
+}
+function closeBoardersModal() {
+    document.getElementById('boarders-modal').style.display = 'none';
+    boardersListingId = null;
+}
+
+function renderBoarders() {
+    reloadTenancies();
+    reloadConversations();
+    const id = boardersListingId;
+    const mine = tenancies.filter(t => t.propertyId === id);
+
+    document.getElementById('boarders-confirmed').innerHTML = mine.length ? mine.map(t => `
+        <div class="boarder-row">
+            <div class="who">${escapeHtml(t.studentName)}
+                <span class="when">${t.status === 'ended'
+                    ? 'ended ' + new Date(t.endedOn).toLocaleDateString()
+                    : 'since ' + new Date(t.startedOn).toLocaleDateString()}</span>
+            </div>
+            <span class="pill ${t.status === 'ended' ? 'pill-ended' : 'pill-ok'}">
+                ${t.status === 'ended' ? 'Former boarder' : 'Boarding'}
+            </span>
+            ${t.status === 'active'
+                ? `<button class="delete-btn" onclick="endTenancy('${t.studentId}')">End</button>`
+                : ''}
+        </div>`).join('')
+        : '<p class="boarder-empty">Nobody confirmed yet. Until you confirm someone, no review can be left on this property.</p>';
+
+    // Enquirers who are not already on the list above.
+    const already = new Set(mine.map(t => t.studentId));
+    const seen = new Set();
+    const candidates = conversations
+        .filter(c => c.propertyId === id && !already.has(c.studentId))
+        .filter(c => !seen.has(c.studentId) && seen.add(c.studentId));
+
+    document.getElementById('boarders-candidates').innerHTML = candidates.length ? candidates.map(c => `
+        <div class="boarder-row">
+            <div class="who">${escapeHtml(c.studentName)}
+                <span class="when">enquired about this property</span></div>
+            <button class="edit-btn"
+                onclick="confirmBoarder('${c.studentId}', '${escapeHtml(c.studentName).replace(/'/g, "\\'")}')">
+                Confirm as boarder</button>
+        </div>`).join('')
+        : '<p class="boarder-empty">No enquiries yet.</p>';
+}
+
+function confirmBoarder(studentId, studentName) {
+    reloadTenancies();
+    if (tenancies.some(t => t.propertyId === boardersListingId && t.studentId === studentId)) {
+        return alert('That student is already on the list.');
+    }
+    tenancies.push({
+        propertyId: boardersListingId,
+        studentId,
+        studentName,
+        status: 'active',
+        confirmedBy: currentUser ? currentUser.id : null,
+        startedOn: new Date().toISOString(),
+        endedOn: null
+    });
+    logAudit('tenancy.confirmed', 'tenancies', boardersListingId,
+             `${studentName} confirmed as a boarder`);
+    saveData(['tenancies', 'auditLogs']);
+    renderBoarders();
+}
+
+/* Ending a tenancy does NOT delete it: the student stops being a
+   current boarder but keeps the right to review a place they lived in,
+   and any review they already left stays attributable. */
+function endTenancy(studentId) {
+    reloadTenancies();
+    const t = tenancies.find(x => x.propertyId === boardersListingId && x.studentId === studentId);
+    if (!t) return;
+    if (!confirm(`End ${t.studentName}'s tenancy? They stay able to review this property, as a former boarder.`)) return;
+    t.status = 'ended';
+    t.endedOn = new Date().toISOString();
+    logAudit('tenancy.ended', 'tenancies', boardersListingId, `${t.studentName} is no longer boarding`);
+    saveData(['tenancies', 'auditLogs']);
+    renderBoarders();
+}
 
 const STAR_WORDS = ['Tap a star to rate', 'Poor', 'Fair', 'Good', 'Very Good', 'Excellent'];
 
@@ -3351,6 +3485,12 @@ function setStar(val) {
 function submitReview(e) {
     e.preventDefault();
     if (pendingStarValue < 1) return alert("Please select a star rating first.");
+    // Re-checked here, not just when the modal opened: the modal can be
+    // left open while a landowner ends the tenancy in another tab.
+    if (!canReview(currentPropertyId, currentUser.id)) {
+        closeReviewModal();
+        return alert('Only confirmed boarders can review this property.');
+    }
     reloadReviews(); // fresh before the duplicate check too, not just the push
     if (hasAlreadyReviewed(currentPropertyId)) {
         return alert("You have already reviewed this property.");
@@ -3449,9 +3589,21 @@ function renderReviews(propertyId) {
         // Guests see it too, relabelled -- tapping it asks them to sign in
         // (see requireAccount()).
         const guest = isGuest();
-        const eligible = guest || (currentUser?.role === 'student' && !hasAlreadyReviewed(propertyId));
+        const student = currentUser?.role === 'student';
+        const boarder = student && canReview(propertyId, currentUser.id);
+        const eligible = guest || (student && boarder && !hasAlreadyReviewed(propertyId));
         btn.innerText = guest ? 'Sign in to review' : 'Write a Review';
         btn.style.display = eligible ? 'inline-block' : 'none';
+
+        /* A hidden button with no explanation reads as a broken page.
+           A signed-in student who is not a boarder is told why, and what
+           would change it. Nobody else needs the line. */
+        const note = document.getElementById('review-gate-note');
+        if (note) {
+            note.innerText = (student && !boarder)
+                ? 'Only boarders can review this property. The owner confirms who boards here.'
+                : '';
+        }
     }
 
     // Report is available to any signed-in student (on any review, not
@@ -3646,6 +3798,7 @@ openPropertyFromQueryParam();
     const LAYERS = [
         ['image-view-modal',        () => closeImageModal()],
         ['review-modal',            () => closeReviewModal()],
+        ['boarders-modal',          () => closeBoardersModal()],
         ['schedule-modal',          () => closeScheduleModal()],
         ['add-listing-modal',       () => closeAddListing()],
         ['edit-listing-modal',      () => closeEditListing()],

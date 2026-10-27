@@ -692,3 +692,17 @@ select {
 .rooms-summary { margin-top: 14px; font-size: 16px; color: #333; display: flex; flex-direction: column; gap: 4px; }
 .rooms-footer-item { white-space: nowrap; } /* "Places available: 4" never splits across lines */
 @media (max-width: 480px) { .room-cards { grid-template-columns: 1fr; } }
+
+/* ---- Boarder confirmation (tenancy) ---- */
+/* flex-basis forces its own line: the heading and buttons above it
+   are a flex row, and the note read as a third button otherwise. */
+.review-gate-note { flex-basis: 100%; width: 100%; margin: 10px 0 0; font-size: 13px; color: #9A6B00; }
+.review-gate-note:empty { margin: 0; }
+.boarders-explainer { font-size: 13px; color: #666; line-height: 1.5; margin: 0 0 16px; }
+.boarders-heading { margin: 18px 0 8px; font-size: 14px; color: #444; }
+.boarder-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+               border: 1px solid #eee; border-radius: 10px; margin-bottom: 8px; }
+.boarder-row .who { flex: 1; min-width: 0; font-weight: 600; font-size: 14px; }
+.boarder-row .when { font-weight: 400; color: #777; font-size: 12px; display: block; }
+.boarder-empty { color: #777; font-size: 13px; padding: 4px 0 8px; }
+.pill-ended { background: #eee; color: #666; }

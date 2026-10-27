@@ -41,15 +41,37 @@ const ROLE_IDENTITY = {
 // (name/school/verified-badge only).
 const LANDOWNER_MEMBER_SINCE = '2025-08-14T00:00:00Z';
 
-/* Campuses selectable in #school-select. Coordinates verified against
-   OpenStreetMap (Nominatim/Overpass) on 2026-08-24. Adding a campus is
-   a one-line addition here — the dropdown is populated from this array. */
+/* Campuses selectable in #school-select. The first five were verified
+   against OpenStreetMap (Nominatim/Overpass) on 2026-08-24; the rest
+   were supplied by the adviser on 2026-10-27 and checked the same way
+   (each is 5–44 m from a mapped road, in line with the originals).
+   Adding a campus is a one-line addition here — the dropdown is
+   populated from this array.
+
+   ORDER MATTERS: directions.html receives the campus as an INDEX
+   (?school=<n>, read into originIdx), so new campuses are APPENDED.
+   Inserting one above would silently re-point every existing link. */
 const SCHOOLS = [
     { name: "University of Santo Tomas - Legazpi (Rawis)", coords: [13.163772, 123.751261] },
     { name: "Bicol University (Main)", coords: [13.144314, 123.723146] },
     { name: "Bicol University (Daraga Campus)", coords: [13.148080, 123.718054] },
     { name: "University of Santo Tomas - Legazpi (Peñaranda)", coords: [13.149116, 123.753447] },
-    { name: "Divine Word College of Legazpi", coords: [13.138088, 123.735962] }
+    // Kept at its 2026-08-24 coordinate, not the adviser's 2026-10-27 one
+    // (44 m apart): this exact pair is what the Street View coverage
+    // measurement in the paper was taken from.
+    { name: "Divine Word College of Legazpi", coords: [13.138088, 123.735962] },
+    { name: "Mariners' Polytechnic College Foundation (MPCF)", coords: [13.169722, 123.751533] },
+    { name: "STI", coords: [13.141561, 123.749389] },
+    { name: "AMA", coords: [13.138347, 123.738789] },
+    { name: "De Vera Institute of Technology", coords: [13.140741, 123.729823] },
+    { name: "Ago Medical & Educational Center", coords: [13.139780, 123.730911] },
+    { name: "Southern Luzon Technological College Foundation (SLTCF)", coords: [13.150439, 123.753701] },
+    { name: "CAT College (Lapu Lapu Campus)", coords: [13.147864, 123.755030] },
+    { name: "Forbes College", coords: [13.147963, 123.753720] },
+    { name: "Tanchuling College", coords: [13.143805, 123.752673] },
+    { name: "Computer Communication Development Institute (CCDI)", coords: [13.137732, 123.736662] },
+    { name: "Computer Systems Institute (CSI)", coords: [13.146334, 123.749628] },
+    { name: "Meriam College of Technology", coords: [13.146277, 123.756059] }
 ];
 
 const YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year', 'Graduate Studies'];

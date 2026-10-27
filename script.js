@@ -3419,27 +3419,29 @@ function renderBoarders() {
         </div>`).join('')
         : '<p class="boarder-empty">Nobody confirmed yet. Until you confirm someone, no review can be left on this property.</p>';
 
-    /* Enquirers who are not already on the list above.
-       serverStudentId is the real database id; studentId is the fixed
-       'stu-1' slot the localStorage prototype uses. The database build
-       needs the former, the prototype only has the latter. */
-    /* Compared as strings on BOTH sides, and against the same id the
-       Confirm button sends. A tenancy from the database carries the
-       numeric user id while a conversation carries the prototype's
-       'stu-1' slot, so comparing them raw never matched and a student
-       stayed in the candidate list after being confirmed. */
+    /* Enquirers not already confirmed above.
+       Which student a conversation belongs to has TWO representations:
+       serverStudentId is the real database id, while studentId is the
+       prototype's fixed 'stu-1' slot -- the same value for every
+       student, because the localStorage build only ever has one. Every
+       comparison here goes through enquirerId() so the three places
+       that need it (the already-confirmed filter, the de-duplication,
+       and the Confirm button) cannot drift apart. De-duplicating on
+       the raw studentId collapsed every student into one, so with two
+       enquiries on a property only the first could ever be confirmed. */
+    const enquirerId = c => String(c.serverStudentId ?? c.studentId);
     const already = new Set(mine.map(t => String(t.studentId)));
     const seen = new Set();
     const candidates = conversations
-        .filter(c => c.propertyId === id && !already.has(String(c.serverStudentId ?? c.studentId)))
-        .filter(c => !seen.has(c.studentId) && seen.add(c.studentId));
+        .filter(c => c.propertyId === id && !already.has(enquirerId(c)))
+        .filter(c => !seen.has(enquirerId(c)) && seen.add(enquirerId(c)));
 
     document.getElementById('boarders-candidates').innerHTML = candidates.length ? candidates.map(c => `
         <div class="boarder-row">
             <div class="who">${escapeHtml(c.studentName)}
                 <span class="when">enquired about this property</span></div>
             <button class="edit-btn"
-                onclick="confirmBoarder('${c.serverStudentId ?? c.studentId}', '${escapeHtml(c.studentName).replace(/'/g, "\\'")}')">
+                onclick="confirmBoarder('${enquirerId(c)}', '${escapeHtml(c.studentName).replace(/'/g, "\\'")}')">
                 Confirm as boarder</button>
         </div>`).join('')
         : '<p class="boarder-empty">No enquiries yet.</p>';

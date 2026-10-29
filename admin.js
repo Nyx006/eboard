@@ -9,7 +9,17 @@
    explained independently.
    ============================================================ */
 
-const DEMO_ADMIN = { email: 'admin@eboard.ph', password: 'eboard2026', name: 'System Admin' };
+/* There is no client-side administrator password any more.
+   A hardcoded pair lived here while the console had no server to ask;
+   it was also printed on the sign-in page. Once this is reachable from
+   the internet that is simply a published password, and worse, it was
+   the FALLBACK: if api-client.js failed to load for any reason, this
+   check ran and let anyone in.
+
+   Authentication is now the server's, in routes/auth.php, with the
+   role checked there as well. With no API reachable the console
+   refuses to sign anyone in rather than falling back to a local
+   check -- see adminLogin() below. */
 const ADMIN_SESSION_KEY = 'eboard_admin_session';
 
 /* Same shape/keys as script.js's copy — see its comment for why:
@@ -298,13 +308,18 @@ function adminLogin(e) {
     const email = document.getElementById('admin-email').value.trim();
     const password = document.getElementById('admin-password').value;
 
-    if (email !== DEMO_ADMIN.email || password !== DEMO_ADMIN.password) {
-        document.getElementById('admin-login-error').style.display = 'block';
-        return;
+    /* api-client.js replaces this whole function with one that asks the
+       server. Reaching this line means the bridge did not load, so
+       there is nothing to authenticate against -- and failing CLOSED is
+       the only safe answer. Refusing with an explanation beats a local
+       check that would hand the console to anyone who read the source. */
+    const err = document.getElementById('admin-login-error');
+    if (err) {
+        err.innerText = 'Cannot reach the server, so sign-in is unavailable. '
+                      + 'Check that the API is running and reload this page.';
+        err.style.display = 'block';
     }
-
-    sessionStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify({ name: DEMO_ADMIN.name, email }));
-    showConsole();
+    console.error('[E-Board] admin sign-in needs the API; api-client.js did not load.');
 }
 
 function adminLogout() {

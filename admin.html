@@ -15,7 +15,8 @@
         <h1 class="portal-logo">E-BOARD</h1>
         <div class="auth-box">
             <h2>Administrator Sign In</h2>
-            <p class="admin-login-hint">Demo credentials: admin@eboard.ph / eboard2026</p>
+            <!-- The demo credential hint was removed on 2026-10-29: printing a
+                 working password on a publicly reachable page is not a hint. -->
             <form onsubmit="adminLogin(event)">
                 <div style="display:flex; flex-direction:column; gap:20px;">
                     <div class="field"><label class="field-label" for="admin-email">Email</label><input type="email" id="admin-email" required></div>
